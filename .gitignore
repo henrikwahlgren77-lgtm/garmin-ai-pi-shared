@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Hemligheter. Mönstret .env.* fångar även säkerhetskopior som
+# .env.bak-20260904-074743 — de låg tidigare ospårade men inte
+# ignorerade, så ett git add -A hade checkat in API-nycklarna i klartext.
+# Mallen är undantagen och ska följa med i repot.
+.env
+.env.*
+!.env.example
+
+# Data
+data/
+*.db
+*.db-journal
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code: lokala startkonfigurationer (launch.json) med sökvägar
+# till den här datorn. Hör inte hemma i repot.
+.claude/

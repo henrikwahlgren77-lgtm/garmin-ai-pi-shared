@@ -1,0 +1,44 @@
+# Exakta versioner för hela beroendeträdet. Genererad av
+# tools/las-beroenden.py — redigera inte för hand, utom de paket som bara
+# finns på den andra plattformen (se skriptet).
+#
+# Installera med låsfilen som tak och golv:
+#     pip install -e . -c requirements.lock          (Pi:n)
+#     pip install -e ".[dev]" -c requirements.lock   (utveckling)
+
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anthropic==1.0.0
+anyio==4.14.2
+apscheduler==3.11.3
+certifi==2026.7.22
+click==8.4.2
+colorama==0.4.6 ; sys_platform == "win32"
+docstring-parser==0.18.0
+fastapi==0.141.1
+garmin-fit-sdk==21.213.0
+h11==0.16.0
+httpcore==1.0.9
+httpcore2==2.12.0
+httptools==0.8.0
+httpx==0.28.1
+httpx2==2.12.0
+idna==3.19
+jinja2==3.1.6
+jiter==0.16.0
+markupsafe==3.0.3
+pydantic==2.13.4
+pydantic-core==2.46.4
+python-dotenv==1.2.3
+pyyaml==6.0.3
+sniffio==1.3.1
+starlette==1.6.0
+truststore==0.10.4
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+tzdata==2026.3 ; sys_platform == "win32"
+tzlocal==5.4.4
+uvicorn==0.52.4
+uvloop==0.22.1 ; sys_platform != "win32"
+watchfiles==1.2.0
+websockets==17.0.1

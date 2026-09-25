@@ -1,0 +1,13 @@
+[Unit]
+Description=Garmin AI Pi — ladda upp databasbackup (timer)
+
+[Timer]
+# Kvart över den nattliga backupen (BACKUP_TIME, default 03:30), så
+# nattens fil hunnit bli klar. RandomizedDelay sprider anropen mot
+# molnet; Persistent kör i efterhand om Pi:n var avstängd vid tiden.
+OnCalendar=*-*-* 03:45:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

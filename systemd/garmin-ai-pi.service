@@ -1,0 +1,19 @@
+[Unit]
+Description=Garmin AI Pi — träningsanalys webbserver
+After=network-online.target
+Wants=network-online.target
+
+# FÖRE `sudo cp`: byt <ditt-användarnamn> mot ditt eget Linux-
+# användarnamn (kör `whoami`) i User, WorkingDirectory, EnvironmentFile
+# och ExecStart nedan — annars startar tjänsten aldrig.
+[Service]
+Type=simple
+User=<ditt-användarnamn>
+WorkingDirectory=/home/<ditt-användarnamn>/garmin-ai-pi
+EnvironmentFile=/home/<ditt-användarnamn>/garmin-ai-pi/.env
+ExecStart=/home/<ditt-användarnamn>/garmin-ai-pi/.venv/bin/python -m src.main serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

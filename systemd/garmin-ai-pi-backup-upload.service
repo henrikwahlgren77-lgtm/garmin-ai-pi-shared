@@ -1,0 +1,13 @@
+[Unit]
+Description=Garmin AI Pi — ladda upp databasbackup till molnet
+After=network-online.target
+Wants=network-online.target
+
+# FÖRE `sudo cp`: byt <ditt-användarnamn> mot ditt eget Linux-
+# användarnamn (kör `whoami`) i User, WorkingDirectory, EnvironmentFile
+# och ExecStart nedan — annars startar tjänsten aldrig.
+[Service]
+Type=oneshot
+User=<ditt-användarnamn>
+WorkingDirectory=/home/<ditt-användarnamn>/garmin-ai-pi
+ExecStart=/home/<ditt-användarnamn>/garmin-ai-pi/scripts/ladda-upp-backup.sh

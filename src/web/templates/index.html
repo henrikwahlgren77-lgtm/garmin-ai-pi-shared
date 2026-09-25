@@ -1,0 +1,1396 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Träningsanalys{% endblock %}
+{% block description %}Träningsanalys från Intervals.icu{% endblock %}
+
+{# marked.js renderar analysernas markdown, och är det enda bibliotek
+   sidan laddar. Chart.js är helt borta ur repot: belastningsdiagrammet
+   ersattes av formbandet och styrkevolymen, båda inline-SVG i
+   renderBand() och renderStrength() nedan. Det tog bort 205 kB från varje
+   sidladdning på en Pi. #}
+{% block head_scripts %}
+<script src="{{ static_url('vendor/marked.min.js') }}"></script>
+{% endblock %}
+
+{# Dashboarden har ingen topbar — hero-blocket är dess rubrikrad. #}
+{% block header %}
+<header class="dash-hero">
+  {# "Torsdagens siffror", inte bara "Torsdagens" — genitiven behöver ett
+     substantiv för att bli grammatisk. Dagen är den som datan gäller,
+     inte nödvändigtvis idag (se wellness_is_stale). #}
+  <p class="eyebrow">{{ day_label }} siffror · uppdaterad {{ synced_at }}</p>
+  {# Sidans enda h1. Avsnittsrubrikerna nedan är h2. #}
+  <h1 class="dash-greeting">{{ greeting }}</h1>
+  {% if wellness_is_stale %}
+  <p class="stale-note">Väntar på dagens synk — visar senast kända värden</p>
+  {% endif %}
+  {# Synken låg som en svart knapp i full bredd längst ner, 4 700px ner på
+     en telefon, och svarade med alert()-rutor. Nu står den här, under
+     "uppdaterad" och "Väntar på dagens synk" som den hör ihop med, och
+     beskedet står i raden bredvid. Schemat synkar varje timme; knappen
+     behövs sällan och är därför en textknapp, inte en fylld. #}
+  <div class="sync-row">
+    <button type="button" class="textbtn" id="sync-btn">
+      <svg class="sync-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
+           stroke="currentColor" stroke-width="2.25" stroke-linecap="round"
+           stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+      <span id="sync-label">Synka nu</span>
+    </button>
+    <p class="sync-status" id="sync-status" role="status"></p>
+  </div>
+</header>
+{% endblock %}
+
+
+{% block content %}
+
+{# Felbeskedet när "Generera om" misslyckades: servern skickar tillbaka
+   hit med ?fel=<block> i stället för att visa sitt råa felsvar (se
+   _analysis_failed i web/app.py). Står ovanför knappen, utanför .prose,
+   så att analysen som laddas in inte skriver över det. #}
+{% macro felbesked(vilket, namn) -%}
+  {%- if analysis_error == vilket %}
+      <p class="error-note" role="alert">{{ namn }} kunde inte genereras. Försök igen om en stund – felet finns i tjänstens logg.</p>
+  {%- endif %}
+{%- endmacro %}
+
+{# --- Ordningen ----------------------------------------------------------
+   Dagens besked först: kroppens siffror och analysen som säger vad du ska
+   göra med dem. Sedan graferna, som visar hur du kommit hit.
+
+   Förut stod de tre graferna överst och morgonanalysen — dagens plan —
+   började 2 600px ner, efter tre skärmar på en telefon. Graferna är
+   underlaget; analysen är beskedet, och det var det man kom för. #}
+
+{# --- Baslinjer: dagens siffror mot ditt eget snitt över samma fönster - #}
+<section class="section" id="body" aria-labelledby="body-title">
+  {# Datumet står i rubriken eftersom siffrorna nedan kan vara gårdagens
+     när dagens synk inte kommit in än — utan det gick det inte att se
+     vilken dag de gällde. #}
+  <div class="section-head">
+    <h2 class="section-title" id="body-title">
+      Kroppen <span class="title-date">— {{ wellness_date }}</span>
+    </h2>
+    <p class="eyebrow">Mot ditt {{ history_days }}-dagarssnitt</p>
+  </div>
+  <div class="gauges four" id="gauges"></div>
+</section>
+
+{# --- De tre analyserna ------------------------------------------------ #}
+{# De tre analyserna är hopfällbara. Var och en är 2000-3500 tecken, och
+   utfällda samtidigt blev sidan 8600px hög — passlistan låg då bakom
+   6000px prosa. <details> är webbläsarens egen kontroll: den fungerar med
+   tangentbord och skärmläsare utan att vi bygger något eget.
+
+   Morgonanalysen står öppen; den är dagens plan. Före morgonens körning
+   står i stället kvällssammanfattningen öppen — se _open_analysis i
+   web/app.py. #}
+<section class="section" id="morning">
+  <details class="analysis-block"{% if open_analysis == 'morning' %} open{% endif %}>
+    <summary>
+      <h2 class="section-title">Morgonanalys</h2>
+      <span class="disclosure" aria-hidden="true"></span>
+    </summary>
+    <div class="analysis-inner">
+      {# "Hämtar…" tills loadAnalysis svarat. Här stod "Ingen analys
+         genererad ännu", som alltså syntes medan analysen laddades — och
+         stod kvar om hämtningen misslyckades, fast analysen fanns. #}
+      <div class="prose" id="morning-ai-body"><p class="empty-note">Hämtar analysen…</p></div>
+      {# Formulär, inte en länk: routen muterar databasen och kostar ett
+         Claude-anrop, och sådant hör inte hemma på GET — en webbläsares
+         länkförhämtning eller ett <img> på en främmande sajt kunde avfyra
+         den. Samma-sajt-spärren i web/app.py är det som faktiskt stänger
+         hålet; POST gör bara att routen slutar se ut som en vanlig länk. #}
+      {# Ankaret (#morning) följer med genom serverns omdirigering till "/",
+         eftersom den inte sätter något eget — så du landar vid analysen du
+         nyss genererade i stället för högst upp. Se openFromHash nedan. #}
+      {{ felbesked('morning', 'Morgonanalysen') }}
+      <form class="generate-form" method="post" action="/analyze/morning#morning">
+        <button class="linkbtn" type="submit">Generera om</button>
+      </form>
+    </div>
+  </details>
+</section>
+
+<section class="section" id="coach">
+  <details class="analysis-block">
+    <summary>
+      <h2 class="section-title">Träningsanalys</h2>
+      <span class="disclosure" aria-hidden="true"></span>
+    </summary>
+    {# Här stod "Genereras automatiskt kl {{ coaching_time }}". Alla tre
+       analyser körs av schemaläggaren, men bara den här sa det — och
+       sedan rutan fick sin "Kördes HH:MM"-rad stod de två raderna med
+       nästan samma siffra ovanpå varandra. Klockslaget som faktiskt
+       gäller är det analysen kördes, inte det den var schemalagd till. #}
+    <div class="analysis-inner">
+      <div class="prose" id="coach-ai-body"><p class="empty-note">Hämtar analysen…</p></div>
+      {# Formulär, inte en länk: routen muterar databasen och kostar ett
+         Claude-anrop, och sådant hör inte hemma på GET — en webbläsares
+         länkförhämtning eller ett <img> på en främmande sajt kunde avfyra
+         den. Samma-sajt-spärren i web/app.py är det som faktiskt stänger
+         hålet; POST gör bara att routen slutar se ut som en vanlig länk. #}
+      {{ felbesked('coaching', 'Träningsanalysen') }}
+      <form class="generate-form" method="post" action="/analyze/coaching#coach">
+        <button class="linkbtn" type="submit">Generera om</button>
+      </form>
+    </div>
+  </details>
+</section>
+
+<section class="section" id="summary">
+  <details class="analysis-block"{% if open_analysis == 'evening' %} open{% endif %}>
+    <summary>
+      <h2 class="section-title">Kvällssammanfattning</h2>
+      <span class="disclosure" aria-hidden="true"></span>
+    </summary>
+    <div class="analysis-inner">
+      {# /analyze/evening kör samma analys som det schemalagda
+         kvällsjobbet. Se analyze_evening i web/app.py. #}
+      <div class="prose" id="evening-ai-body"><p class="empty-note">Hämtar analysen…</p></div>
+      {# Formulär, inte en länk: routen muterar databasen och kostar ett
+         Claude-anrop, och sådant hör inte hemma på GET — en webbläsares
+         länkförhämtning eller ett <img> på en främmande sajt kunde avfyra
+         den. Samma-sajt-spärren i web/app.py är det som faktiskt stänger
+         hålet; POST gör bara att routen slutar se ut som en vanlig länk. #}
+      {{ felbesked('evening', 'Kvällssammanfattningen') }}
+      <form class="generate-form" method="post" action="/analyze/evening#summary">
+        <button class="linkbtn" type="submit">Generera om</button>
+      </form>
+    </div>
+  </details>
+</section>
+
+{# --- Formbandet: kondition mot trötthet, med gapet ifyllt ------------- #}
+<section class="section" id="load" aria-labelledby="band-title">
+  <div class="band">
+    <div class="band-head">
+      {# Fönstret kommer från _LOAD_HISTORY_DAYS i web/app.py, inte som
+         fast text — rubriken och datan kan då inte säga olika saker. #}
+      <h2 class="section-title" id="band-title">Kondition mot trötthet, {{ history_days }} dagar</h2>
+      <p class="legend">
+        <span><i class="swatch fitness"></i>Kondition</span>
+        <span><i class="swatch fatigue"></i>Trötthet</span>
+        <span><i class="swatch gap"></i>Form</span>
+      </p>
+    </div>
+    <div class="chart-shell" id="band-shell"></div>
+    <p class="band-note" id="band-note"></p>
+    <dl class="readout">
+      <div><dt>Kondition</dt><dd id="ro-ctl">–</dd></div>
+      <div><dt>Trötthet</dt><dd id="ro-atl">–</dd></div>
+      <div><dt>Form</dt><dd id="ro-tsb">–</dd></div>
+    </dl>
+  </div>
+</section>
+
+{# --- Styrkevolym: träningen formbandet ovan inte kan se ---------------
+   CTL/ATL räknas ur pulsen, och puls är ett dåligt mått på att lyfta
+   tungt. Uppmätt på 90 dagar: styrketräningen är 51 % av träningstiden
+   men 22 % av belastningen, eftersom snittpulsen i ett gympass ligger på
+   94 mot löpningens 142. Halva träningen syntes alltså knappt i den enda
+   bild dashboarden gav av den.
+
+   Ligger direkt efter formbandet: de två svarar tillsammans på "vad har
+   jag gjort". "Kroppen" ovanför handlar om återhämtning, en annan fråga.
+
+   Döljs helt (hidden) tills datan hämtats, och förblir dold om det inte
+   finns några styrkepass alls — hellre ingen sektion än en tom. #}
+<section class="section" id="strength" aria-labelledby="strength-title" hidden>
+  <div class="band">
+    <div class="band-head">
+      <h2 class="section-title" id="strength-title">Styrkevolym, {{ strength_weeks }} veckor</h2>
+      {# Vad "volym" betyder är inte självklart, och hela kortet vilar på
+         definitionen. #}
+      <p class="eyebrow">Reps × vikt</p>
+    </div>
+    <div class="chart-shell" id="strength-shell"></div>
+    <p class="band-note strength-note" id="strength-note"></p>
+    <dl class="readout">
+      <div><dt>Hittills</dt><dd id="ro-week">–</dd></div>
+      <div><dt>Snitt</dt><dd id="ro-avg">–</dd></div>
+      <div><dt>Tyngsta</dt><dd id="ro-top">–</dd></div>
+    </dl>
+  </div>
+</section>
+
+{# --- Progression per övning ------------------------------------------
+   Volymen ovan svarar på hur mycket du lyft. Den kan inte svara på om
+   bänkpressen går uppåt: en vecka full av lätt arbete väger tyngre där än
+   det pass där du slog ditt max. Databasen har ett års set per övning —
+   37 bänkpress, 41 push press, 35 marklyft — som ingenting läste.
+
+   Ligger direkt efter volymen: samma fråga, en nivå ner. Döljs helt tills
+   datan hämtats, och förblir dold om ingen övning har nog med pass. #}
+<section class="section" id="progression" aria-labelledby="progression-title" hidden>
+  <div class="band">
+    <div class="band-head">
+      <h2 class="section-title" id="progression-title">Progression</h2>
+      {# Webbläsarens egen select. Den har tangentbordsstöd, hoppa-till-
+         bokstav och en lista som fungerar på telefon — allt sådant en
+         egenbyggd dropdown hade fått återuppfinnas sämre. #}
+      <select id="exercise-pick" class="picker" aria-label="Välj övning"></select>
+    </div>
+    {# Legenden OCH definitionen skrivs av renderProgression, inte här: en
+       övning utan vikt loggad ritas i reps, och en fast text hade då stått
+       och påstått "Skattat maxlyft" över en kurva som visar något annat.
+
+       Definitionen finns för att "skattat maxlyft" inte förklarar sig
+       självt. Volymkortet ovanför definierar sitt mått på samma sätt
+       ("Reps × vikt") — utan raden är talet en siffra utan innebörd. #}
+    <p class="eyebrow sentence" id="progression-what"></p>
+    <p class="legend" id="progression-legend"></p>
+    <div class="chart-shell" id="progression-shell"></div>
+    <p class="band-note progression-note" id="progression-note"></p>
+    <dl class="readout">
+      {# Rutornas etiketter säger VILKEN av kurvans punkter de visar.
+         "Skattat max" och "Rekord" stod tidigare bredvid legendens
+         "Skattat maxlyft" utan att det gick att se att alla tre var samma
+         mått — det ena senaste passets värde, det andra det högsta. #}
+      <div><dt id="pr-last-label">Senaste passet</dt><dd id="pr-last">–</dd></div>
+      <div><dt>Bästa set</dt><dd id="pr-best">–</dd></div>
+      <div><dt>Personligt rekord</dt><dd id="pr-record">–</dd></div>
+    </dl>
+  </div>
+</section>
+
+{# --- Chatt --------------------------------------------------------------
+   Samma hopfällbara vita kort som de tre analyserna ovan, i stället för
+   rubrik + text utanför kortet och chatten i ett eget separat kort — två
+   olika mönster för samma sorts block. Öppen som standard: chatten är
+   inte något man genererar och bläddrar förbi, den ska synas direkt. #}
+<section class="section" id="chat">
+  <details class="analysis-block" open>
+    <summary>
+      <h2 class="section-title">Fråga coachen</h2>
+      <span class="disclosure" aria-hidden="true"></span>
+    </summary>
+    <div class="analysis-inner">
+      <p class="eyebrow sentence">Berätta hur du mår, logga ett styrkepass, eller fråga om träningen.</p>
+      <div id="chat-messages" class="chat-thread" aria-label="Chattmeddelanden"></div>
+      <form id="chat-form" class="chat-input-bar">
+        <input type="text" id="chat-input" class="chat-input" placeholder="Skriv till coachen…" autocomplete="off" aria-label="Skriv meddelande">
+        <button type="submit" class="chat-send-btn">Skicka</button>
+      </form>
+    </div>
+  </details>
+</section>
+
+{# --- Senaste pass: varje rad länkar till passidan --------------------
+   .band, samma behållare som formbandet och styrkevolymen, i stället för
+   .card med rubriken utanför.
+
+   Listan låg i ett vitt kort, men RUBRIKEN stod kvar på sidans grå botten
+   — och det var det enda blocket på dashboarden som delade upp sig så.
+   Formbandet, styrkevolymen och de tre analyserna bär alla sin rubrik
+   inuti det vita. "Kroppen" har sin utanför, men där finns heller ingen
+   enda ruta att lägga den i: mätarna är egna kort på rad. #}
+<section class="section" id="latest" aria-labelledby="latest-title">
+  <div class="band">
+    <div class="band-head">
+      <h2 class="section-title" id="latest-title">Senaste pass</h2>
+      <p class="eyebrow">Stapeln visar belastning</p>
+    </div>
+    <div class="sessions" id="activities"></div>
+  </div>
+</section>
+
+
+{% endblock %}
+
+{% block scripts %}
+{# markdown.js före chat.js: chat.js anropar renderMarkdownInto. #}
+<script src="{{ static_url('markdown.js') }}"></script>
+<script src="{{ static_url('chat.js') }}"></script>
+{# Delad med aktivitetssidan, så klockslaget under analysrubriken skrivs
+   likadant på båda. #}
+<script src="{{ static_url('run-time.js') }}"></script>
+<script src="{{ static_url('generate.js') }}"></script>
+<script>
+// Inget token här. Inloggningen är kakan (se _TOKEN_COOKIE i
+// web/app.py), och fetch skickar den av sig själv. Tokenet stod förut
+// i sidans källkod, där httponly på kakan inte skyddade det.
+
+/* --- Tillbaka efter "Generera om" -------------------------------------
+   Formulären postar till t.ex. /analyze/coaching#coach, och ankaret följer
+   med genom omdirigeringen hit. Utan det här landade man högst upp, med
+   Träningsanalysen och Kvällssammanfattningen hopfällda — analysen man nyss
+   väntat en minut på syntes inte alls.
+
+   Blocket fälls ut direkt. Webbläsaren hoppar själv till ankaret, men
+   graferna ovanför ritas först när deras data kommit, och de knuffar
+   blocket flera skärmar nedåt (Safari justerar inte för det). Därför
+   scrollas det fram igen när allt hämtats — om du inte själv hunnit
+   börja scrolla. */
+const hamtningar = [];
+const hashMal = (() => {
+  const id = decodeURIComponent(location.hash.slice(1));
+  const sektion = id ? document.getElementById(id) : null;
+  const block = sektion ? sektion.querySelector('details.analysis-block') : null;
+  if (!block) return null;
+  block.open = true;
+  return sektion;
+})();
+if (hashMal) {
+  let egenScroll = false;
+  const avbryt = () => { egenScroll = true; };
+  for (const typ of ['wheel', 'touchstart', 'keydown']) {
+    window.addEventListener(typ, avbryt, { once: true, passive: true });
+  }
+  // setTimeout: ResizeObserver-omritningarna nedan väntar 120 ms.
+  window.addEventListener('load', () => {
+    Promise.allSettled(hamtningar).then(() => setTimeout(() => {
+      if (!egenScroll) hashMal.scrollIntoView({ block: 'start' });
+    }, 150));
+  });
+}
+
+// All chattlogik ligger i /static/chat.js. Den låg där för att delas med
+// en fristående chattsida också; den sidan var bara ett skal runt samma
+// markup och är borttagen, men uppdelningen håller logiken utanför
+// templaten och får stå kvar.
+initChat();
+
+// Riktigt minustecken (U+2212), inte bindestreck — samma tecken som
+// avvikelserna i baslinjerna använder, annars ser sidan inkonsekvent ut.
+const fmt1 = (v) => (v == null ? '–' : Number(v).toFixed(1).replace('.', ',').replace('-', '−'));
+const fmtInt = (v) => (v == null ? '–' : Math.round(Number(v)).toLocaleString('sv-SE'));
+// Vikter lagras som REAL: ett jämnt lyft är 140.0, ett halvt 82.5. Visa
+// decimalen bara när den betyder något — samma regel som %g använder på
+// passidan. Volymer räknas i tusental kilo och tar fmtInt.
+const fmtKg = (v) => (v == null ? '–' :
+  Number(v).toLocaleString('sv-SE', { maximumFractionDigits: 1 }));
+
+/* --- Synka nu ----------------------------------------------------------
+   Beskedet skrivs i raden bredvid knappen (role="status", så en
+   skärmläsare läser upp det) i stället för i alert()-rutor, som stoppade
+   sidan och krävde ett tryck för att försvinna. Efter en lyckad synk
+   laddas sidan om så att siffrorna och "uppdaterad" blir de nya; knappen
+   förblir låst fram till dess. */
+async function syncIntervals() {
+  const button = document.getElementById('sync-btn');
+  const label = document.getElementById('sync-label');
+  const status = document.getElementById('sync-status');
+  const visa = (text, fel) => {
+    status.textContent = text;
+    status.classList.toggle('is-error', !!fel);
+  };
+  const slapp = () => {
+    button.disabled = false;
+    button.classList.remove('is-busy');
+    label.textContent = 'Synka nu';
+  };
+
+  button.disabled = true;
+  button.classList.add('is-busy');
+  label.textContent = 'Synkar…';
+  visa('', false);
+  try {
+    // POST: /sync synkar och skriver till databasen. Se
+    // kommentaren vid formulären ovan.
+    const resp = await fetch('/sync', { method: 'POST' });
+    if (!resp.ok) {
+      // Servern förklarar i "detail" — att en synk redan pågår, eller att
+      // felet finns i loggen. En statuskod säger ingenting här.
+      // Serverns text är redan en hel mening ("Synkroniseringen
+      // misslyckades. Felet finns i tjänstens logg.") och visas som den är.
+      let text = 'Synken misslyckades. Försök igen om en stund.';
+      try {
+        const err = await resp.json();
+        if (err && typeof err.detail === 'string') text = err.detail;
+      } catch (e) { /* svaret var inte JSON */ }
+      visa(text, true);
+      slapp();
+      return;
+    }
+    const data = await resp.json();
+    // Antalet är uppdaterade rader i synkfönstret, inte bara nya — därav
+    // "synkade" och inte "nya".
+    const pass = data.activities || 0;
+    const dagar = data.wellness || 0;
+    visa(`Klart: ${pass} pass och ${dagar} ${dagar === 1 ? 'dag' : 'dagar'} ` +
+         'hälsodata synkade. Laddar om…', false);
+    setTimeout(() => location.reload(), 800);
+  } catch (err) {
+    console.error('Synken:', err);
+    visa('Kunde inte nå servern. Kontrollera anslutningen och försök igen.', true);
+    slapp();
+  }
+}
+document.getElementById('sync-btn').addEventListener('click', syncIntervals);
+
+/* Teckenbredden i 12px IBM Plex Mono, uppmätt med getComputedTextLength.
+   Diagrammen räknar sina marginaler och rekordetikettens plats ur den, i
+   stället för ur ett påhittat fast tal.
+
+   Var 6.6 — uppmätt medan *-regeln i style.css gav all SVG-text Archivo,
+   vars siffror är smalare. Mono är 7.2 och alltså 9 % bredare. */
+const MONO_CH = 7.2;
+
+/* --- Formbandet ------------------------------------------------------
+   Ritas i containerns FAKTISKA pixlar i stället för en fast viewBox. Med
+   en fast viewBox och height:auto krymper höjden proportionellt med
+   bredden — på en telefon blev bandet under 90px högt och kurvorna gick
+   inte att läsa, alltså värdelöst på den enhet sidan mest används på. */
+let bandData = null;
+let bandDrawn = false;
+
+function renderBand() {
+  const shell = document.getElementById('band-shell');
+  if (!shell || !bandData || !bandData.days.length) return;
+  const { days, ctl, atl } = bandData;
+  const last = days.length - 1;
+  if (last < 1) return;
+
+  const W = Math.max(240, Math.round(shell.clientWidth));
+  const H = Math.round(Math.min(300, Math.max(200, W * 0.42)));
+
+  /* Y-axeln följer datan i stället för att börja på noll. Med nollan
+     kvar låg kurvorna i översta tredjedelen med ett tomt fält under, och
+     en veckas svängning i trötthet syntes knappt. Talen vid gridlinjerna
+     visar var skalan börjar, så ingen läser gapet som större än det är.
+     Utrymmet runt kurvorna är 12 % av spannet, avrundat till hela steg. */
+  const values = ctl.concat(atl).filter((v) => v != null).map(Number);
+  const lo = Math.min.apply(null, values);
+  const hi = Math.max.apply(null, values);
+  const pad = Math.max(1, (hi - lo) * 0.12);
+  // Minsta steg som ger högst fem gridintervall över det utfyllda spannet.
+  const stepY = [1, 2, 5, 10, 20, 50].find((s) => (hi - lo + 2 * pad) / s <= 5) || 100;
+  const minY = Math.max(0, Math.floor((lo - pad) / stepY) * stepY);
+  const maxY = Math.max(minY + stepY, Math.ceil((hi + pad) / stepY) * stepY);
+
+  // Gridnivåerna räknas fram FÖRE marginalerna, för högermarginalen är
+  // precis den plats etiketterna behöver.
+  const levels = [];
+  for (let v = minY + stepY; v < maxY; v += stepY) levels.push(v);
+
+  /* Högermarginalen rymmer y-etiketterna ("5", "10", "15") och stod som
+     fast 46px. Etiketterna är 13px breda och ritas 7px från ytan, så
+     26px av dem var tom remsa — bandet blev smalare än det behövde vara,
+     och synligt snedställt mot vänsterkantens 6px. Nu räknas marginalen
+     ur den bredaste etikett som faktiskt ritas, med samma 6px luft efter
+     som ytan har före. Skalar också rätt den dag konditionen är
+     tresiffrig, vilket 46px hade klarat men inte 26. */
+  const LABEL_GAP = 7;
+  const labelW = levels.reduce((m, v) => Math.max(m, String(v).length * MONO_CH), 0);
+  const PAD = {
+    top: 16,
+    right: Math.ceil(LABEL_GAP + labelW + 6),
+    bottom: 28,
+    left: 6,
+  };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  const x = (i) => PAD.left + (i / last) * innerW;
+  const y = (v) => PAD.top + innerH - ((Number(v) - minY) / (maxY - minY)) * innerH;
+
+  // En saknad dag ritas på skalans botten, inte på noll under den.
+  const pts = (arr) => arr.map((v, i) => [x(i), y(v == null ? minY : v)]);
+  const ctlPts = pts(ctl);
+  const atlPts = pts(atl);
+  const line = (p) => p.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ');
+  const area = line(atlPts) + ' ' +
+    ctlPts.slice().reverse().map((q) => 'L' + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ') + ' Z';
+
+  // Gridlinjer på de nivåer som räknades fram ovan.
+  const grid = levels.map((v) => `
+    <line x1="${PAD.left}" y1="${y(v).toFixed(1)}" x2="${(PAD.left + innerW).toFixed(1)}"
+      y2="${y(v).toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>
+      <text x="${(PAD.left + innerW + LABEL_GAP).toFixed(1)}" y="${(y(v) + 4).toFixed(1)}"
+      fill="var(--text-muted)" font-family="var(--mono)" font-size="12">${v}</text>`).join('');
+
+  // Glesare datumetiketter när det är trångt, så de inte krockar.
+  const idx = W < 420 ? [0, last] : [0, Math.round(last / 3), Math.round(2 * last / 3), last];
+  const ticks = idx.map((i) => {
+    const d = days[i] || '';
+    // Number() på dagen också: "3/9", inte "03/9" — samma form som
+    // styrkevolymens och progressionens axlar.
+    const label = Number(d.slice(8)) + '/' + Number(d.slice(5, 7));
+    const anchor = i === last ? 'end' : i === 0 ? 'start' : 'middle';
+    return `<text x="${x(i).toFixed(1)}" y="${H - 8}" fill="var(--text-muted)" text-anchor="${anchor}"
+      font-family="var(--mono)" font-size="12">${label}</text>`;
+  }).join('');
+
+  const pathLen = (p) => p.reduce((s, q, i) => (i ? s + Math.hypot(q[0] - p[i - 1][0], q[1] - p[i - 1][1]) : 0), 0);
+  const len = Math.ceil(Math.max(pathLen(ctlPts), pathLen(atlPts))) + 40;
+  // Animera bara första uppritningen, inte varje omritning vid resize.
+  const anim = bandDrawn ? '' : 'draw';
+  const appear = bandDrawn ? '' : 'appear';
+
+  shell.innerHTML = `
+    <svg class="band-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+         aria-label="Kondition och trötthet över ${days.length} dagar. Kondition ${fmt1(ctl[last])}, trötthet ${fmt1(atl[last])}.">
+      ${grid}
+      <path d="${area}" fill="var(--fill)" class="${appear}"/>
+      <path d="${line(atlPts)}" fill="none" stroke="var(--ember)" stroke-width="2.5"
+            stroke-linejoin="round" stroke-linecap="round" class="${anim}" style="--len:${len}"/>
+      <path d="${line(ctlPts)}" fill="none" stroke="var(--volt)" stroke-width="2.5"
+            stroke-linejoin="round" stroke-linecap="round" class="${anim}" style="--len:${len}"/>
+      <g class="${appear}">
+        <line x1="${x(last).toFixed(1)}" y1="${y(ctl[last]).toFixed(1)}"
+              x2="${x(last).toFixed(1)}" y2="${y(atl[last]).toFixed(1)}"
+              stroke="var(--ember)" stroke-width="1.5" stroke-dasharray="2 3"/>
+        <circle cx="${x(last).toFixed(1)}" cy="${y(ctl[last]).toFixed(1)}" r="4.5"
+                fill="var(--volt)" stroke="var(--card)" stroke-width="2"/>
+        <circle cx="${x(last).toFixed(1)}" cy="${y(atl[last]).toFixed(1)}" r="4.5"
+                fill="var(--ember)" stroke="var(--card)" stroke-width="2"/>
+      </g>
+      ${ticks}
+    </svg>`;
+  bandDrawn = true;
+}
+
+// Hur länge har formen legat under noll? Räknas bakifrån i serien.
+function negativeStreak(tsb) {
+  let n = 0;
+  for (let i = tsb.length - 1; i >= 0; i--) {
+    if (tsb[i] == null || Number(tsb[i]) >= 0) break;
+    n++;
+  }
+  return n;
+}
+
+function renderBandNote(tsb) {
+  const el = document.getElementById('band-note');
+  if (!el) return;
+  const streak = negativeStreak(tsb);
+  if (!tsb.length) { el.textContent = ''; return; }
+  if (streak === 0) {
+    el.innerHTML = 'Formen är <strong class="pos">positiv</strong> — konditionen bär tröttheten.';
+  } else if (streak === 1) {
+    el.innerHTML = 'Formen gick under noll <strong>igår</strong>. Gapet är din trötthetsskuld.';
+  } else {
+    // Fyller svackan hela fönstret vet vi inte var den började — den kan
+    // vara längre än de dagar vi hämtat. "Minst" är då det ärliga ordet.
+    const atLeast = streak === tsb.length ? 'minst ' : '';
+    el.innerHTML = 'Formen har legat under noll <strong>' + atLeast + streak +
+      ' dagar i rad</strong>. Gapet är din trötthetsskuld.';
+  }
+}
+
+/* --- Styrkevolym -----------------------------------------------------
+   Staplar och inte en linje: volym per vecka är diskreta högar arbete,
+   inte ett värde som glider mellan mätpunkter som CTL gör.
+
+   Ingen y-axel med siffror, till skillnad från formbandet. Staplarnas
+   uppgift är form och jämförelse — de exakta talen står i readout:en
+   under, där de går att läsa. Det enda referensvärdet i grafen är den
+   streckade snittlinjen, och mot den kan varje stapel läsas direkt. */
+let strengthData = null;
+
+function renderStrength() {
+  const shell = document.getElementById('strength-shell');
+  if (!shell || !strengthData) return;
+  const weeks = strengthData.weeks || [];
+  if (weeks.length < 2) return;
+
+  const W = Math.max(240, Math.round(shell.clientWidth));
+  const H = Math.round(Math.min(240, Math.max(150, W * 0.34)));
+
+  const snitt = strengthData.average_volume_kg;
+  const toppVarde = Math.max(
+    1, ...weeks.map((w) => Number(w.volume_kg) || 0), Number(snitt) || 0);
+  const maxY = toppVarde * 1.12;
+
+  // Högermarginalen rymmer bara snittlinjens etikett. MONO_CH är
+  // teckenbredden i 12px IBM Plex Mono, uppmätt (se formbandet).
+  const LABEL = 'snitt';
+  const PAD = {
+    top: 14,
+    right: snitt ? Math.ceil(7 + LABEL.length * MONO_CH + 6) : 8,
+    bottom: 26,
+    left: 6,
+  };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+  const y = (v) => PAD.top + innerH - (Number(v) / maxY) * innerH;
+
+  const slot = innerW / weeks.length;
+  const barW = Math.max(5, Math.min(30, slot * 0.6));
+  const mitt = (i) => PAD.left + slot * (i + 0.5);
+  const golv = y(0);
+
+  // Ett datum som "9 juni" till länkarnas etikett och verktygstips.
+  const dagText = (d) => {
+    const parsed = new Date(d + 'T12:00:00');
+    return isNaN(parsed) ? d
+      : parsed.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' });
+  };
+
+  // Klickytan för ett pass. Segmentets egen höjd används, men aldrig under
+  // 10px — ett kort pass i en vecka med ett långt ska gå att träffa. Ytorna
+  // får överlappa några pixlar, de syns inte och den översta vinner.
+  //
+  // Två rutor: markeringen (.bar-hl) har stapelns bredd och syns vid
+  // hovring och fokus, tryckytan (.bar-hit) har hela veckans bredd och syns
+  // aldrig. Tryckytan var stapelns bredd, 13px på en telefon — långt under
+  // de 44 en tumme behöver.
+  const passLank = (pass, x, bredd, traffX, traffBredd, segTop, segH) => {
+    const etikett = dagText(pass.day) + ', ' + fmtInt(pass.volume_kg) + ' kilo';
+    const h = Math.max(10, segH);
+    const y = segTop + segH - h;
+    const ytor = `<rect class="bar-hl" x="${x.toFixed(1)}" y="${y.toFixed(1)}"
+        width="${bredd.toFixed(1)}" height="${h.toFixed(1)}" rx="2"/>
+      <rect class="bar-hit" x="${traffX.toFixed(1)}" y="${y.toFixed(1)}"
+        width="${traffBredd.toFixed(1)}" height="${h.toFixed(1)}"/>`;
+    // Utan pass-id finns ingen sida att gå till (set loggade i chatten innan
+    // passet synkats). Då ritas ingen länk — bara verktygstipset.
+    if (!pass.activity_id) {
+      return `<g><title>${escapeHtml(etikett)}</title>${ytor}</g>`;
+    }
+    const href = '/activity/' + encodeURIComponent(pass.activity_id);
+    return `<a class="bar-link" href="${escapeHtml(href)}"
+        aria-label="Gympass ${escapeHtml(etikett)}"
+      ><title>${escapeHtml(etikett)}</title>${ytor}</a>`;
+  };
+
+  const bars = weeks.map((w, i) => {
+    const v = Number(w.volume_kg) || 0;
+    const x = mitt(i) - barW / 2;
+    const slotX = mitt(i) - slot / 2;
+    const passes = w.passes || [];
+    const pagaende = i === weeks.length - 1;
+
+    if (v <= 0) {
+      // Vecka utan volym. Fanns det ändå pass ritas en låg grå tröskel:
+      // klockan loggade passet men inga vikter (2 % av alla set saknar
+      // vikt), och en tom plats hade sagt "du tränade inte", vilket är
+      // en annan sak. Utan pass ritas ingenting alls.
+      if (!w.sessions) return '';
+      // Grå, inte röd: 0 kg betyder här "vi vet inte vad du lyfte", inte
+      // "du lyfte lite". Att färga den som en svag vecka vore en slutsats
+      // datan inte bär.
+      const stub = `<rect x="${x.toFixed(1)}" y="${(golv - 3).toFixed(1)}"
+        width="${barW.toFixed(1)}" height="3" rx="1" fill="var(--ink-faint)"/>`;
+      // Ingen höjd att dela på, så klickytan delas i BREDD i stället.
+      const kolumn = barW / Math.max(1, passes.length);
+      const traffKolumn = slot / Math.max(1, passes.length);
+      const lankar = passes.map((pass, k) =>
+        passLank(pass, x + kolumn * k, kolumn, slotX + traffKolumn * k, traffKolumn,
+                 golv - 14, 14)).join('');
+      return stub + lankar;
+    }
+
+    const topp = y(v);
+    const hojd = Math.max(2, golv - topp);
+
+    // Färgen svarar på "över eller under mitt eget snitt?". Den PÅGÅENDE
+    // veckan hålls utanför: den är inte slut, så den kan inte ha hamnat
+    // under något. En måndag hade annars alltid lyst rött. Den behåller
+    // sin streckade kontur.
+    let fill = 'var(--volt-soft)';
+    let stroke = 'var(--volt)';
+    if (!pagaende && snitt) {
+      const over = v >= snitt;
+      fill = over ? 'var(--above-soft)' : 'var(--below-soft)';
+      stroke = over ? 'var(--above)' : 'var(--below)';
+    }
+    const dash = pagaende ? ' stroke-dasharray="3 2"' : '';
+    const stapel = `<rect x="${x.toFixed(1)}" y="${topp.toFixed(1)}"
+      width="${barW.toFixed(1)}" height="${hojd.toFixed(1)}" rx="2"
+      fill="${fill}" stroke="${stroke}" stroke-width="1.5"${dash}/>`;
+
+    // Passen staplas nerifrån och upp i den ordning de kördes. Skiljelinjen
+    // ritas OVANPÅ stapeln i kortets egen färg, inte som ett mellanrum —
+    // ett mellanrum hade kortat stapeln och gjort höjden osann.
+    let ackumulerad = 0;
+    const delar = [];
+    const skiljare = [];
+    passes.forEach((pass, k) => {
+      const andel = (Number(pass.volume_kg) || 0) / v;
+      const segH = andel * hojd;
+      const segTop = golv - (ackumulerad + segH);
+      delar.push(passLank(pass, x, barW, slotX, slot, segTop, segH));
+      ackumulerad += segH;
+      if (k < passes.length - 1) {
+        const linjeY = golv - ackumulerad;
+        skiljare.push(`<line x1="${x.toFixed(1)}" y1="${linjeY.toFixed(1)}"
+          x2="${(x + barW).toFixed(1)}" y2="${linjeY.toFixed(1)}"
+          stroke="var(--card)" stroke-width="1"/>`);
+      }
+    });
+
+    return stapel + skiljare.join('') + delar.join('');
+  }).join('');
+
+  const snittLinje = snitt ? `
+    <line x1="${PAD.left}" y1="${y(snitt).toFixed(1)}"
+          x2="${(PAD.left + innerW).toFixed(1)}" y2="${y(snitt).toFixed(1)}"
+          stroke="var(--ink-faint)" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="${(PAD.left + innerW + 7).toFixed(1)}" y="${(y(snitt) + 4).toFixed(1)}"
+          fill="var(--text-muted)" font-family="var(--mono)" font-size="12">${LABEL}</text>` : '';
+
+  const veckoetikett = (d) => (d ? Number(d.slice(8)) + '/' + Number(d.slice(5, 7)) : '');
+  const sista = weeks.length - 1;
+  const ticks = [0, sista].map((i) => `
+    <text x="${mitt(i).toFixed(1)}" y="${H - 7}" fill="var(--text-muted)"
+          text-anchor="${i === sista ? 'end' : 'start'}"
+          font-family="var(--mono)" font-size="12">${veckoetikett(weeks[i].start)}</text>`).join('');
+
+  const totalt = weeks.reduce((s, w) => s + (Number(w.volume_kg) || 0), 0);
+  // INGEN role="img" här, till skillnad från formbandet ovanför. role="img"
+  // gör hela grafen till ETT objekt för skärmläsare och gömmer allt inuti —
+  // länkarna till passen hade då gått att tabba till men inte att höra.
+  // Utan rollen läses de i stället upp som en lista med länkar, en per pass,
+  // vilket är mer användbart än en enda etikett. Sammanfattningen finns
+  // kvar i .band-note och i avläsningarna under grafen.
+  shell.innerHTML = `
+    <svg class="band-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"
+         aria-label="Styrkevolym per vecka, ${weeks.length} veckor. Totalt ${fmtInt(totalt)} kilo${
+           snitt ? ', i snitt ' + fmtInt(snitt) + ' kilo per avslutad vecka' : ''}.">
+      ${bars}
+      ${snittLinje}
+      ${ticks}
+    </svg>`;
+}
+
+function renderStrengthNote(weeks, snitt, topLift) {
+  const el = document.getElementById('strength-note');
+  if (!el) return;
+  // Den pågående veckan räknas inte — den kan inte ha varit en vecka du
+  // "hoppade över" förrän den är slut.
+  const avslutade = weeks.slice(0, -1);
+  const lyfta = avslutade.filter((w) => w.sessions > 0).length;
+  const delar = [];
+  if (avslutade.length) {
+    delar.push('Du har lyft <strong>' + lyfta + ' av de senaste ' +
+      avslutade.length + ' veckorna</strong>' +
+      (snitt ? ', i snitt ' + fmtInt(snitt) + ' kg' : '') + '.');
+  }
+  if (topLift) {
+    delar.push('Tyngsta lyftet: <strong>' + escapeHtml(topLift.exercise) + ' ' +
+      fmtKg(topLift.weight_kg) + ' kg</strong>.');
+  }
+  el.innerHTML = delar.join(' ');
+}
+
+hamtningar.push(fetch('/api/strength')
+  .then((r) => r.json())
+  .then((data) => {
+    const weeks = data.weeks || [];
+    // Ingen styrketräning alls i fönstret: låt sektionen vara dold hellre
+    // än att visa ett kort med tolv tomma platser.
+    if (!weeks.some((w) => w.sessions > 0)) return;
+    document.getElementById('strength').hidden = false;
+    strengthData = data;
+    renderStrength();
+    renderStrengthNote(weeks, data.average_volume_kg, data.top_lift);
+
+    const kg = (v) => (v == null ? '–' : fmtInt(v) + ' <span class="gauge-unit">kg</span>');
+    document.getElementById('ro-week').innerHTML = kg(weeks[weeks.length - 1].volume_kg);
+    document.getElementById('ro-avg').innerHTML = kg(data.average_volume_kg);
+    document.getElementById('ro-top').innerHTML = data.top_lift
+      ? fmtKg(data.top_lift.weight_kg) + ' <span class="gauge-unit">kg</span>'
+      : '–';
+  })
+  .catch((e) => console.error('Kunde inte hämta styrkevolym:', e)));
+
+/* --- Baslinjer -------------------------------------------------------
+   Dagens värde placeras i sitt eget spann över samma fönster som
+   formbandet. En siffra utan jämförelse säger inget — "92" betyder olika
+   saker för olika kroppar. */
+const GAUGES = [
+  { key: 'sleep_score', label: 'Sömnscore', unit: 'av 100', better: 'high', fmt: fmtInt },
+  { key: 'hrv', label: 'Variabilitet', unit: 'ms', better: 'high', fmt: fmtInt },
+  { key: 'resting_hr', label: 'Vilopuls', unit: 'bpm', better: 'low', fmt: fmtInt },
+  { key: 'steps', label: 'Steg', unit: '', better: 'high', fmt: fmtInt },
+];
+
+// Liten trendlinje i varje gauge-kort — samma fönster som baslinjen, men
+// som form i stället för ett enda snitt. Luckor (mätvärde saknas den dagen)
+// hoppas över i stället för att rita en felaktig punkt vid noll; index i
+// den ORIGINALA (ofiltrerade) serien används ändå för x-positionen, så en
+// lucka syns som ett hopp i linjen på rätt ställe i tiden, inte som att
+// dagarna kring luckan flyttat ihop sig.
+function sparkline(values) {
+  if (!values || values.length < 2) return '';
+  const w = 200, h = 46, pad = 4;
+  const pts = values.map((v, i) => (v == null ? null : [i, Number(v)])).filter(Boolean);
+  if (pts.length < 2) return '';
+  const ys = pts.map((p) => p[1]);
+  const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+  const spanY = maxY - minY || 1;
+  const maxX = values.length - 1;
+  const x = (i) => pad + (i / (maxX || 1)) * (w - pad * 2);
+  const y = (v) => h - pad - ((v - minY) / spanY) * (h - pad * 2);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join(' ');
+  const [lastI, lastV] = pts[pts.length - 1];
+  // preserveAspectRatio="none" sträcker ritningen olika mycket på bredd och
+  // höjd, och sträckte med den linjen och pricken: linjen blev tjockare i
+  // de branta partierna än i de flata, och pricken oval. non-scaling-stroke
+  // ritar strecket i skärmpixlar i stället. Pricken är ett streck utan
+  // längd med runda ändar, så den också blir rund.
+  const [px, py] = [x(lastI).toFixed(1), y(lastV).toFixed(1)];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}" fill="none" stroke="var(--ink-faint)" stroke-width="1.75"
+          stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <path d="M${px} ${py}h0" stroke="var(--text)" stroke-width="6"
+          stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function renderGauges(latest, baselines, history) {
+  const host = document.getElementById('gauges');
+  if (!host) return;
+  host.innerHTML = GAUGES.map((g) => {
+    const value = latest ? latest[g.key] : null;
+    const base = baselines ? baselines[g.key] : null;
+    const spark = history ? sparkline(history[g.key]) : '';
+    if (value == null) {
+      return `<div class="gauge"><p class="gauge-label">${g.label}</p>
+        <p class="gauge-value">–</p><p class="delta">Ingen mätning</p></div>`;
+    }
+    let track = '', delta = '';
+    if (base && base.max > base.min) {
+      const pos = (v) => Math.max(0, Math.min(100, ((v - base.min) / (base.max - base.min)) * 100));
+      track = `<div class="track" role="presentation">
+        <i class="mean" style="left:${pos(base.mean).toFixed(1)}%"></i>
+        <i class="today" style="left:calc(${pos(value).toFixed(1)}% - 1.5px)"></i></div>`;
+      const diff = Number(value) - base.mean;
+      // "Bättre" beror på mätvärdet: hög HRV är bra, hög vilopuls är det inte.
+      const good = g.better === 'high' ? diff > 0 : diff < 0;
+      const cls = Math.abs(diff) < 0.5 ? 'flat' : good ? 'good' : 'warn';
+      const sign = Math.abs(diff) < 0.5 ? '±0' : (diff > 0 ? '+' : '−') + g.fmt(Math.abs(diff));
+      // Hårt mellanslag före talet: raden får brytas efter "mot", men
+      // aldrig mellan "snitt" och talet — "+17 mot snittet" / "76" var
+      // vanligt i två kolumner på en telefon.
+      delta = `<p class="delta ${cls}"><b>${sign}</b> mot snitt&nbsp;${g.fmt(base.mean)}</p>`;
+    } else {
+      delta = '<p class="delta">Ingen baslinje än</p>';
+    }
+    const unit = g.unit ? ` <span class="gauge-unit">${g.unit}</span>` : '';
+    return `<div class="gauge"><p class="gauge-label">${g.label}</p>
+      <p class="gauge-value">${g.fmt(value)}${unit}</p>${spark}${track}${delta}</div>`;
+  }).join('');
+}
+
+hamtningar.push(fetch('/api/wellness')
+  .then((r) => r.json())
+  .then((data) => {
+    const latest = data.latest || {};
+    bandData = { days: data.days || [], ctl: data.ctl || [], atl: data.atl || [] };
+    renderBand();
+    renderBandNote(data.tsb || []);
+    const last = (data.ctl || []).length - 1;
+    if (last >= 0) {
+      document.getElementById('ro-ctl').textContent = fmt1(data.ctl[last]);
+      document.getElementById('ro-atl').textContent = fmt1(data.atl[last]);
+      const tsbEl = document.getElementById('ro-tsb');
+      tsbEl.textContent = fmt1(data.tsb[last]);
+      tsbEl.classList.toggle('neg', Number(data.tsb[last]) < 0);
+    }
+    renderGauges(latest, data.baselines || {}, data);
+  })
+  .catch((e) => console.error('Kunde inte hämta wellness:', e)));
+
+/* --- Progression per övning -------------------------------------------
+   En linje och inte staplar: volym per vecka är diskreta högar arbete,
+   men ett maxlyft är ett värde som ska läsas som en riktning.
+
+   Två serier på samma kg-skala. Skattat maxlyft i volt — det jämförbara
+   måttet, se analysis/strength.py för varför 5x120 räknas som ett tyngre
+   lyft än 1x130. Tyngsta stången blekt bredvid, för det är den man minns
+   från passet. Gapet mellan linjerna är uppläggen: ligger de nära kördes
+   tunga singlar, glider de isär kördes längre set.
+
+   Linjen BRYTS där ett pass saknar värde i stället för att dras genom
+   noll. Ett pass utan repsräkning — klockan loggar sådana, 44 set skarpt
+   — är inte ett pass där du lyfte noll kilo, det är ett vi inte kan räkna
+   på. En linje ner till golvet hade påstått det förra. */
+let progressionData = null;
+
+function renderProgression() {
+  const shell = document.getElementById('progression-shell');
+  if (!shell || !progressionData) return;
+  const pass = progressionData.sessions || [];
+  if (pass.length < 2) { shell.innerHTML = ''; return; }
+
+  // Har övningen ingen vikt loggad alls (armhävningar, hängande rodd)
+  // finns inget maxlyft att skatta. Reps är då det enda måttet som
+  // beskriver arbetet, och en tom graf vore ett sämre svar än fel enhet
+  // med rätt etikett.
+  const harVikt = pass.some((p) => p.estimated_1rm != null);
+  // Noll reps är inte noll arbete — det är klockan som loggat set utan att
+  // räkna dem (armhävningar 2025-08-28: tre set, ingen räkning). I
+  // repsläget måste de bli en lucka som linjen bryts vid, precis som ett
+  // saknat maxlyft, annars dyker kurvan till golvet och påstår ett pass
+  // som inte hände.
+  const serieA = pass.map((p) =>
+    (harVikt ? p.estimated_1rm : (p.reps_total > 0 ? p.reps_total : null)));
+  const serieB = harVikt ? pass.map((p) => p.top_weight_kg) : [];
+
+  const W = Math.max(240, Math.round(shell.clientWidth));
+  const H = Math.round(Math.min(260, Math.max(170, W * 0.36)));
+
+  const varden = serieA.concat(serieB).filter((v) => v != null).map(Number);
+  if (varden.length < 2) { shell.innerHTML = ''; return; }
+  // Skalan börjar inte på noll. Skillnaden mellan 75 och 89 kg är hela
+  // poängen med kortet, och mot en nollbaserad axel blir den en knappt
+  // synlig krusning högst upp. Golvet läggs en bit under lägsta värdet så
+  // kurvan inte klibbar vid kanten.
+  const lag = Math.min.apply(null, varden);
+  const hog = Math.max.apply(null, varden);
+  const luft = Math.max(1, (hog - lag) * 0.35);
+  const minY = Math.max(0, lag - luft);
+  const maxY = hog + luft;
+
+  // Rekordet är TYNGSTA VIKTEN du lyft, inte det skattade maxlyftet.
+  //
+  // Här stod estimated_1rm, och det var fel på ett sätt som ljög rakt ut:
+  // bänkpressens "Personligt rekord 89,4 kg" markerade en dag då tyngsta
+  // stången vägde 72,5. Epley är en räkning PÅ ett lyft, aldrig ett lyft —
+  // ett personligt rekord måste vara något som faktiskt hänt.
+  //
+  // För en kroppsviktsövning är flest reps i ett pass det enda rekord som
+  // finns att sätta.
+  const rekord = progressionData.records || {};
+  const rekordPost = harVikt ? rekord.top_weight_kg : rekord.reps_total;
+  const rekordVarde = rekordPost ? Number(rekordPost.value) : null;
+  // Rekordet räknas över hela historiken och kan mycket väl ligga utanför
+  // de tolv pass kurvan visar — bänkpressens 120 kg är från maj. Linjen
+  // ritas bara när den ryms; annars står rekordet i rutan under, som är
+  // det ärliga svaret: "det finns, men inte i den här bilden".
+  const visaRekord = rekordVarde != null && rekordVarde <= maxY && rekordVarde >= minY;
+  // Etiketten ligger VID strecket och inte i högermarginalen som
+  // formbandets. "Personligt rekord" är sjutton tecken; i marginalen hade
+  // den ätit en tredjedel av bredden på en telefon. Vid strecket kostar
+  // den ingen bredd alls. Toppmarginalen ger plats för den ovanför när
+  // rekordet ligger högst upp i datan (se rekordEtikett nedan).
+  const PAD = { top: visaRekord ? 22 : 14, right: 10, bottom: 26, left: 6 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+  const sista = pass.length - 1;
+  const x = (i) => PAD.left + (sista ? (i / sista) * innerW : innerW / 2);
+  const y = (v) => PAD.top + innerH - ((Number(v) - minY) / (maxY - minY)) * innerH;
+
+  // Sammanhängande bitar av serien, så en lucka blir ett avbrott och inte
+  // ett streck genom golvet.
+  const bitar = (serie) => {
+    const ut = [];
+    let nu = [];
+    serie.forEach((v, i) => {
+      if (v == null) { if (nu.length) ut.push(nu); nu = []; return; }
+      nu.push([x(i), y(v)]);
+    });
+    if (nu.length) ut.push(nu);
+    return ut;
+  };
+  const dragen = (p) => p.map((q, i) =>
+    (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join(' ');
+  const linjer = (serie, farg, bredd) => bitar(serie).map((bit) => (
+    bit.length === 1
+      // En ensam punkt mellan två luckor blir ingen linje — rita en prick,
+      // annars försvinner passet ur grafen helt.
+      ? `<circle cx="${bit[0][0].toFixed(1)}" cy="${bit[0][1].toFixed(1)}" r="2.5" fill="${farg}"/>`
+      : `<path d="${dragen(bit)}" fill="none" stroke="${farg}" stroke-width="${bredd}"
+           stroke-linejoin="round" stroke-linecap="round"/>`
+  )).join('');
+
+  const legend = document.getElementById('progression-legend');
+  if (legend) {
+    legend.innerHTML = (harVikt
+      ? '<span><i class="swatch fitness"></i>Skattat maxlyft</span>' +
+        '<span><i class="swatch faint"></i>Tyngsta stången</span>'
+      : '<span><i class="swatch fitness"></i>Reps per pass</span>') +
+      (visaRekord ? '<span><i class="swatch record"></i>Personligt rekord</span>' : '');
+  }
+  const vad = document.getElementById('progression-what');
+  if (vad) {
+    vad.textContent = harVikt
+      ? 'Skattat maxlyft ≈ passets bästa set omräknat till ett rep. '
+        + 'Rekordet är tyngsta vikten du lyft.'
+      : 'Reps per pass = alla räknade reps. Rekordet är flest i ett pass.';
+  }
+
+  const enhet = harVikt ? ' kg' : ' reps';
+  const dagText = (d) => {
+    const parsed = new Date(d + 'T12:00:00');
+    return isNaN(parsed) ? d
+      : parsed.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' });
+  };
+
+  // Klickyta per pass: hela kolumnens höjd, så en punkt går att träffa
+  // även när linjerna ligger tätt. Länkar dit passet ligger när vi vet
+  // det; set loggade i chatten innan passet synkats har inget id.
+  const halvSlot = sista ? innerW / sista / 2 : innerW / 2;
+  const punkter = pass.map((p, i) => {
+    const varde = serieA[i];
+    const delar = [dagText(p.day)];
+    if (varde != null) delar.push(fmtKg(varde) + enhet);
+    if (p.best_set) delar.push(p.best_set.reps + ' × ' + fmtKg(p.best_set.weight_kg) + ' kg');
+    else if (varde == null) delar.push('inget mätbart set');
+    // Klipp ytan mot ritytans kanter. Med få pass blir halvSlot bred, och
+    // svg.band-chart har overflow:visible — den yttersta ytan hängde då
+    // utanför kortet och fångade pekaren på det som låg bredvid.
+    const vanster = Math.max(PAD.left, x(i) - halvSlot);
+    const hoger = Math.min(PAD.left + innerW, x(i) + halvSlot);
+    const rect = `<rect class="bar-hit" x="${vanster.toFixed(1)}" y="${PAD.top}"
+      width="${Math.max(0, hoger - vanster).toFixed(1)}" height="${innerH.toFixed(1)}"/>`;
+    const prick = varde == null ? '' :
+      `<circle cx="${x(i).toFixed(1)}" cy="${y(varde).toFixed(1)}" r="${i === sista ? 4.5 : 2.5}"
+        fill="var(--volt)" stroke="var(--card)" stroke-width="${i === sista ? 2 : 0}"/>`;
+    return `<g><title>${escapeHtml(delar.join(', '))}</title>${prick}${rect}</g>`;
+  }).join('');
+
+  const rekordLinje = visaRekord ? `
+    <line x1="${PAD.left}" y1="${y(rekordVarde).toFixed(1)}"
+          x2="${(PAD.left + innerW).toFixed(1)}" y2="${y(rekordVarde).toFixed(1)}"
+          stroke="var(--text)" stroke-width="1.5" stroke-dasharray="4 3"/>` : '';
+
+  // Rekordetiketten får inte ligga under en kurva. Den stod fast i
+  // vänsterkanten ovanför strecket, och där korsade maxlyftskurvan den så
+  // fort de första passen låg nära rekordet — knäböjens "Personligt rekord
+  // 115 kg × 5" hade den blå linjen rakt genom texten.
+  //
+  // Nu provas fyra platser, vänster eller höger ände och ovanför eller
+  // under strecket, först med hela texten och sedan med kortare "Rekord".
+  // Första platsen där ingen kurva passerar vinner. Är ingen fri ritas
+  // ingen text: legenden säger vad det streckade är och rutan under grafen
+  // talet, och en etikett som inte går att läsa hjälper ingen.
+  const rekordEtikett = (() => {
+    if (!visaRekord) return '';
+    const ry = y(rekordVarde);
+    const varde = fmtKg(rekordVarde) + enhet +
+      (rekordPost && rekordPost.reps ? ' × ' + rekordPost.reps : '');
+    // Det som faktiskt ritas, med 1px luft runt: maxlyftets prickar (r 2.5,
+    // den senaste 4.5 med 2px kant — se punkter), ensamma punkter mellan
+    // två luckor (r 2.5, se linjer) och linjerna med halva sin bredd.
+    // Tyngsta stången har inga prickar; att dess sista punkt ofta ligger
+    // precis PÅ rekordstrecket får inte stänga platsen ovanför det.
+    const prickar = serieA
+      .map((v, i) => (v == null ? null : [x(i), y(v), i === sista ? 6.5 : 2.5]))
+      .filter(Boolean);
+    const kurvor = [[bitar(serieA), 2.5], [bitar(serieB), 1.5]];
+    const inom = (px, py, r, x0, x1, y0, y1) =>
+      px >= x0 - r - 1 && px <= x1 + r + 1 && py >= y0 - r - 1 && py <= y1 + r + 1;
+    // Passerar någon kurva genom rutan [x0, x1] × [y0, y1]?
+    const strackaKrockar = (p, q, marg, x0, x1, y0, y1) => {
+      // Linjens höjd där den går in i och ut ur rutans bredd.
+      const fran = Math.max(x0, Math.min(p[0], q[0]));
+      const till = Math.min(x1, Math.max(p[0], q[0]));
+      if (fran > till) return false;
+      const vid = (xx) => q[1] + (p[1] - q[1]) * ((xx - q[0]) / ((p[0] - q[0]) || 1));
+      const ya = vid(fran);
+      const yb = vid(till);
+      return Math.max(ya, yb) >= y0 - marg && Math.min(ya, yb) <= y1 + marg;
+    };
+    const krockar = (x0, x1, y0, y1) =>
+      prickar.some(([px, py, r]) => inom(px, py, r, x0, x1, y0, y1)) ||
+      kurvor.some(([bitarna, bredd]) => bitarna.some((bit) => (bit.length === 1
+        ? inom(bit[0][0], bit[0][1], 2.5, x0, x1, y0, y1)
+        : bit.some((p, k) => k > 0 &&
+            strackaKrockar(p, bit[k - 1], bredd / 2 + 1, x0, x1, y0, y1)))));
+    for (const text of ['Personligt rekord ' + varde, 'Rekord ' + varde]) {
+      const bredd = text.length * MONO_CH;
+      if (bredd > innerW) continue;
+      for (const [hoger, ovanfor] of [[false, true], [true, true], [false, false], [true, false]]) {
+        // Baslinjen 6px ovanför strecket, eller så att versalerna börjar
+        // 6px under det. Rutan räknar med uppstaplar (10px) och
+        // nedstaplar (3px) i 12px mono.
+        const bas = ovanfor ? ry - 6 : ry + 16;
+        const y0 = bas - 10;
+        const y1 = bas + 3;
+        if (y0 < 0 || y1 > PAD.top + innerH) continue;
+        const x0 = hoger ? PAD.left + innerW - bredd : PAD.left;
+        if (krockar(x0, x0 + bredd, y0, y1)) continue;
+        return `<text x="${(hoger ? PAD.left + innerW : PAD.left).toFixed(1)}"
+          y="${bas.toFixed(1)}" text-anchor="${hoger ? 'end' : 'start'}"
+          fill="var(--text)" font-family="var(--mono)" font-size="12"
+          font-weight="500">${escapeHtml(text)}</text>`;
+      }
+    }
+    return '';
+  })();
+
+  // Årtal när serien spänner över ett årsskifte. Fönstret räknas i PASS,
+  // inte i veckor, så armhävningarnas fyra pass sträcker sig från augusti
+  // 2025 till augusti 2026 — och utan årtalet stod det "28/8" till vänster
+  // och "27/8" till höger, alltså en kurva som såg ut att gå baklänges.
+  const spannerAr = pass[0].day.slice(0, 4) !== pass[sista].day.slice(0, 4);
+  const etikett = (d) => (d
+    ? Number(d.slice(8)) + '/' + Number(d.slice(5, 7)) +
+      (spannerAr ? ' -' + d.slice(2, 4) : '')
+    : '');
+  const ticks = [0, sista].map((i) => `
+    <text x="${x(i).toFixed(1)}" y="${H - 7}" fill="var(--text-muted)"
+          text-anchor="${i === sista ? 'end' : 'start'}"
+          font-family="var(--mono)" font-size="12">${etikett(pass[i].day)}</text>`).join('');
+
+  const sammanfattning = (harVikt ? 'Skattat maxlyft' : 'Reps per pass') + ' för ' +
+    progressionData.exercise + ' över ' + pass.length + ' pass, senast ' +
+    (serieA[sista] == null ? 'okänt' : fmtKg(serieA[sista]) + enhet) + '.';
+
+  shell.innerHTML = `
+    <svg class="band-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+         aria-label="${escapeHtml(sammanfattning)}">
+      ${rekordLinje}
+      ${linjer(serieB, 'var(--ink-faint)', 1.5)}
+      ${linjer(serieA, 'var(--volt)', 2.5)}
+      ${rekordEtikett}
+      ${punkter}
+      ${ticks}
+    </svg>`;
+}
+
+function renderProgressionNote() {
+  const el = document.getElementById('progression-note');
+  if (!el || !progressionData) return;
+  const pass = progressionData.sessions || [];
+  const harVikt = pass.some((p) => p.estimated_1rm != null);
+
+  if (!harVikt) {
+    const repsRekord = (progressionData.records || {}).reps_total;
+    el.innerHTML = 'Ingen vikt loggad för övningen — kurvan visar ' +
+      '<strong>reps per pass</strong>, och rekordet är flest reps i ett pass' +
+      (repsRekord ? ' (<strong>' + fmtInt(repsRekord.value) + '</strong>, ' +
+        escapeHtml(etikettManad(repsRekord.day)) + ')' : '') + '.';
+    return;
+  }
+  // Namnge VILKET rekord. Ett ensamt "nytt rekord" gjorde kortet
+  // motsägelsefullt: push press 2026-09-03 tog rekordet i tyngsta stången
+  // men inte i skattat maxlyft, och noten stod ovanför en avläsning som
+  // visade 60,5 mot rekordets 63.
+  const REKORDNAMN = {
+    top_weight_kg: 'tyngsta vikt',
+    volume_kg: 'volym',
+    reps_total: 'reps',
+    // estimated_1rm står MEDVETET inte här. Ett skattat maxlyft är ingen
+    // notering att sätta rekord i — se rekordlinjen ovan.
+  };
+  const satta = (progressionData.records_set || [])
+    .map((f) => REKORDNAMN[f]).filter(Boolean);
+  if (satta.length) {
+    const lista = satta.length === 1 ? satta[0]
+      : satta.slice(0, -1).join(', ') + ' och ' + satta[satta.length - 1];
+    // "inom de N pass som visas" stod här, och det stämmer inte längre.
+    // Rekorden räknas sedan dess över HELA historiken (se api_progression
+    // i web/app.py) — kvalifikationen gjorde alltså ett riktigt
+    // personbästa till en notering inom tolv pass. Ett rekord som
+    // presenteras som mindre än det är, är samma sorts osanning som ett
+    // som presenteras som mer.
+    el.innerHTML = 'Senaste passet satte personligt rekord i <strong>' +
+      escapeHtml(lista) + '</strong>, räknat över hela din loggade historik ' +
+      'för övningen.';
+    return;
+  }
+  // Första och sista passet som HAR ett värde — inte första och sista
+  // raden. Saknar ytterkanterna mätning blir jämförelsen annars mellan
+  // två luckor.
+  const medVarde = pass.filter((p) => p.estimated_1rm != null);
+  if (medVarde.length < 2) { el.textContent = ''; return; }
+  const forst = medVarde[0];
+  const sist = medVarde[medVarde.length - 1];
+  const diff = sist.estimated_1rm - forst.estimated_1rm;
+  const riktning = diff > 0.5 ? 'upp' : diff < -0.5 ? 'ned' : 'oförändrat';
+  const svans = riktning === 'oförändrat'
+    ? 'Skattat maxlyft står <strong>stilla</strong> sedan ' + etikettManad(forst.day) + '.'
+    : 'Skattat maxlyft har gått <strong>' + riktning + ' ' +
+      fmtKg(Math.abs(diff)) + ' kg</strong> sedan ' + etikettManad(forst.day) + '.';
+  el.innerHTML = svans;
+}
+
+// "21 februari", men "21 februari -25" när datumet inte är från i år.
+// Fönstret räknas i PASS och inte i veckor, så en övning som körs sällan
+// sträcker sig över årsskiftet — och ett rekord satt i fjol är ett annat
+// besked än ett satt i februari i år.
+function etikettManad(d) {
+  const parsed = new Date(d + 'T12:00:00');
+  if (isNaN(parsed)) return d;
+  const text = parsed.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' });
+  return d.slice(0, 4) === String(new Date().getFullYear())
+    ? text : text + ' -' + d.slice(2, 4);
+}
+
+function visaProgression(exercise) {
+  return fetch('/api/strength/progression?exercise=' + encodeURIComponent(exercise))
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data) return;
+      progressionData = data;
+      renderProgression();
+      renderProgressionNote();
+
+      const pass = data.sessions || [];
+      const senaste = pass[pass.length - 1];
+      const harVikt = pass.some((p) => p.estimated_1rm != null);
+      const rek = (data.records || {})[harVikt ? 'top_weight_kg' : 'reps_total'];
+      const med = (v, e) =>
+        (v == null ? '–' : fmtKg(v) + ' <span class="gauge-unit">' + e + '</span>');
+      const under = (t) => '<span class="readout-when">' + escapeHtml(t) + '</span>';
+
+      // Ruta 1 är en SKATTNING och måste läsas som en. Tilde före talet,
+      // och etiketten säger "skattat" — den hette "Senaste passet", vilket
+      // gjorde 89,4 kg till något atleten såg ut att ha lyft.
+      document.getElementById('pr-last-label').textContent =
+        harVikt ? 'Skattat max, senast' : 'Senast, reps';
+      document.getElementById('pr-last').innerHTML = !senaste ? '–'
+        : harVikt
+          ? (senaste.estimated_1rm == null ? '–'
+             : '≈ ' + med(senaste.estimated_1rm, 'kg'))
+        : med(senaste.reps_total || null, 'reps');
+
+      // Ruta 2 och 3 är riktiga lyft: det bästa setet i senaste passet, och
+      // den tyngsta vikt som någonsin legat på stången.
+      document.getElementById('pr-best').innerHTML =
+        senaste && senaste.best_set
+          ? senaste.best_set.reps + ' × ' + fmtKg(senaste.best_set.weight_kg) +
+            ' <span class="gauge-unit">kg</span>'
+          : '–';
+      // Reps och datum under talet. Ett rekord utan reps är halva beskedet
+      // — 120 kg för ett rep och för tre är olika lyft — och ett utan
+      // tidpunkt går inte att förhålla sig till.
+      document.getElementById('pr-record').innerHTML = rek
+        ? med(rek.value, harVikt ? 'kg' : 'reps') +
+          under((rek.reps ? rek.reps + (rek.reps === 1 ? ' rep, ' : ' reps, ') : '') +
+                etikettManad(rek.day))
+        : '–';
+    })
+    .catch((e) => console.error('Kunde inte hämta progression:', e));
+}
+
+hamtningar.push(fetch('/api/strength/exercises')
+  .then((r) => r.json())
+  .then((ovningar) => {
+    // Ingen övning med nog med pass: låt sektionen vara dold hellre än
+    // att visa en tom väljare över en tom graf.
+    if (!ovningar || !ovningar.length) return;
+    const pick = document.getElementById('exercise-pick');
+    pick.innerHTML = ovningar.map((o) =>
+      `<option value="${escapeHtml(o.exercise)}">${escapeHtml(o.exercise)} (${o.sessions})</option>`
+    ).join('');
+    document.getElementById('progression').hidden = false;
+    pick.addEventListener('change', () => visaProgression(pick.value));
+    // Flest pass först ur API:et, alltså den övning som har mest att visa.
+    return visaProgression(ovningar[0].exercise);
+  })
+  .catch((e) => console.error('Kunde inte hämta övningar:', e)));
+
+// Rita om diagrammen när bredden ändras (rotation, fönsterstorlek).
+// Båda ritas i containerns faktiska pixlar och måste därför räknas om —
+// de skalar inte av sig själva som en fast viewBox hade gjort.
+function observeWidth(id, draw) {
+  const shell = document.getElementById(id);
+  if (!shell || !window.ResizeObserver) return;
+  let timer;
+  new ResizeObserver(() => {
+    clearTimeout(timer);
+    timer = setTimeout(draw, 120);
+  }).observe(shell);
+}
+observeWidth('band-shell', renderBand);
+observeWidth('strength-shell', renderStrength);
+observeWidth('progression-shell', renderProgression);
+
+/* --- Analyserna ------------------------------------------------------ */
+/* demoteHeadings bor i static/markdown.js hos renderMarkdownInto, och
+   runTimeLabel/insertRunTime i static/run-time.js. Aktivitetssidan
+   använder samma funktioner — analyserna ska se likadana ut på båda
+   sidorna, och en kopia här hade kunnat glida isär från den. */
+
+function loadAnalysis(endpoint, targetId, emptyText, showRunTime) {
+  return fetch(endpoint)
+    .then((r) => {
+      // Ett felsvar är också JSON ({"detail": ...}) och saknar markdown.
+      // Utan kontrollen visades det som "ingen analys", fast felet låg
+      // i hämtningen och inte i att analysen saknades.
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then((d) => {
+      const el = document.getElementById(targetId);
+      if (!el) return;
+      if (d.markdown) {
+        // Sanerande rendering (static/markdown.js). Stod tidigare som
+        // marked.parse() rakt in i innerHTML — marked v15 har inget
+        // sanitize-läge, så rå HTML i analysen kördes av webbläsaren.
+        renderMarkdownInto(el, d.markdown);
+        demoteHeadings(el);
+        if (showRunTime) insertRunTime(el, d.created_at, d.ref_id);
+      } else {
+        el.innerHTML = '<p class="empty-note">' + emptyText + '</p>';
+      }
+    })
+    .catch((e) => {
+      console.error('Kunde inte hämta ' + endpoint + ':', e);
+      // "Hämtar analysen…" får inte stå kvar, och "ingen analys" vore fel
+      // besked — den kan mycket väl finnas.
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.innerHTML = '<p class="empty-note">Kunde inte hämta analysen. ' +
+          'Ladda om sidan för att försöka igen.</p>';
+      }
+    });
+}
+
+hamtningar.push(loadAnalysis('/api/analyses/morning', 'morning-ai-body', 'Ingen analys genererad ännu.', true));
+hamtningar.push(loadAnalysis('/api/analyses/coaching', 'coach-ai-body', 'Ingen träningsanalys ännu.', true));
+hamtningar.push(loadAnalysis('/api/analyses/evening', 'evening-ai-body', 'Ingen sammanfattning ännu.', true));
+
+/* --- Senaste pass ---------------------------------------------------- */
+const WEEKDAYS = ['sön', 'mån', 'tis', 'ons', 'tor', 'fre', 'lör'];
+
+function sessionDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return WEEKDAYS[d.getDay()].toUpperCase() + ' ' + d.getDate();
+}
+
+// Samma regel som _fmt_duration i web/app.py, så ett pass har samma längd
+// i listan och på passidan: "1 h 18 min", "1 h", "48 min". "1 h 0 min"
+// stod här för varje jämn timme.
+function duration(seconds) {
+  if (!seconds) return null;
+  const m = Math.round(seconds / 60);
+  if (m === 0) return Math.round(seconds) + ' s';
+  if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60);
+  return m % 60 ? h + ' h ' + (m % 60) + ' min' : h + ' h';
+}
+
+hamtningar.push(fetch('/api/activities')
+  .then((r) => r.json())
+  .then((data) => {
+    const host = document.getElementById('activities');
+    const list = data.activities || [];
+    if (!host) return;
+    if (!list.length) {
+      host.innerHTML = '<p class="empty-note">Inga pass synkade ännu.</p>';
+      return;
+    }
+    // Stapeln skalas mot det tyngsta passet i listan, inte mot ett fast
+    // tak — annars blir alla staplar nästan osynliga under en lugn vecka.
+    const maxTss = Math.max.apply(null, list.map((a) => Number(a.tss) || 0).concat([1]));
+    host.innerHTML = list.map((a) => {
+      const meta = [];
+      if (a.distance_meters) meta.push((a.distance_meters / 1000).toFixed(2).replace('.', ',') + ' km');
+      const dur = duration(a.duration_seconds);
+      if (dur) meta.push(dur);
+      // "141 bpm", som på passidan. "snittpuls 141" var metadatans
+      // längsta del och den som oftast tvingade fram en tredje rad.
+      if (a.average_heart_rate) meta.push(a.average_heart_rate + ' bpm');
+      const pct = ((Number(a.tss) || 0) / maxTss) * 100;
+      const href = '/activity/' + encodeURIComponent(a.id);
+      // Passnamnet kommer från Intervals.icu och gick tidigare oescapat
+      // in i innerHTML. Ett pass som heter "<img src=x onerror=...>"
+      // körde alltså kod när dashboarden laddades (reproducerat skarpt).
+      //
+      // Varje värde i ett eget span som inte bryts, och ett hårt mellanslag
+      // före "·": raden bryts då bara EFTER en punkt, aldrig inne i
+      // "1 h 18 min" och aldrig så att nästa rad börjar med "·".
+      return `<a class="session" href="${href}">
+        <span class="session-date">${sessionDate(a.start_time)}</span>
+        <span class="session-name">${escapeHtml(a.name || 'Pass')}</span>
+        <span class="session-meta">${meta.map((m) => '<span>' + m + '</span>').join('&nbsp;· ')}</span>
+        <span class="session-load">
+          <span class="load-bar"><i style="width:${pct.toFixed(0)}%"></i></span>
+          <span class="load-value">${a.tss == null ? '–' : Math.round(a.tss)}</span>
+        </span>
+        <span class="session-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"
+          fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round"
+          stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></a>`;
+    }).join('');
+  })
+  .catch((e) => console.error('Kunde inte hämta aktiviteter:', e)));
+</script>
+{% endblock %}

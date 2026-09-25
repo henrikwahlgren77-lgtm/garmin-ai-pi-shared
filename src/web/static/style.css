@@ -1,0 +1,1344 @@
+:root {
+  /* Sval gryningsgrå grund i stället för den gamla varmvita. Neutralerna
+     lutar mot indigon nedan, så de läser som valda snarare än ärvda. */
+  --bg: #E8EDF2;
+  --card: #FFFFFF;
+  --text: #0A1622;
+  /* Var #5B6C7B — läsbart nog för att klara AA-kontrast (~4.6:1 mot
+     --bg), men i praktiken svårläst i den lilla, spärrade mono-stil
+     etiketter som .eyebrow och .session-date sätts i. Mörkare ger
+     ~7,6:1 mot --bg, gott om marginal, och skiljer sig ändå tydligt
+     från --text. */
+  --text-dim: #3E4B57;
+  /* Dämpad text som inte ska konkurrera: grafernas axeltext och
+     tomtexter. Stod tidigare i --ink-faint, som bara ger 2,6:1 mot vitt
+     och alltså faller under WCAG:s 4,5:1 för liten text. Den här ger
+     5,4:1 mot --card och 4,6:1 mot --bg. */
+  --text-muted: #5B6C7B;
+  /* Bara grafik: linjer, spår, markörer. Aldrig text — se ovan. */
+  --ink-faint: #93A3B1;
+  --border: #CDD8E1;
+
+  /* Två semantiska signaler, aldrig dekoration:
+     volt = form och kontroll, ember = belastning och trötthet.
+     Kalla mot varma, precis som fysiologin de beskriver.
+
+     Regeln gäller utan undantag. Knappar, länkar, fokusringar, felbesked
+     och markörer för "idag" bär ingen av dem — de tar --text. Står en
+     signalfärg någonstans ska den gå att läsa som form eller trötthet.
+     (Enda avsteget är appikonens bricka, som inte ritar data.) */
+  --volt: #2B21F5;
+  --ember: #FF5A1F;
+  /* Ember som TEXT. Den ljusa tonen ovan ger 3,1:1 mot vitt och 2,7:1
+     mot --bg — nog för linjer och staplar, men under 4,5:1 för liten
+     text som "Väntar på dagens synk" och fetstilen i noterna. Samma
+     kulör, mörkare: 5,7:1 mot --card, 4,9:1 mot --bg. */
+  --ember-text: #B93A0A;
+  --fill: rgba(255, 90, 31, 0.17);
+  /* Volt-ton till styrkevolymens staplar. Volt och inte ember: volymen
+     du lyft är utfört arbete, inte trötthetsskuld — ember bär den
+     betydelsen i formbandet ovanför och får inte betyda två saker. */
+  --volt-soft: rgba(43, 33, 245, 0.22);
+  /* En tredje betydelse, och bara i styrkevolymen: veckan mot ditt EGET
+     12-veckorssnitt. Den krockar inte med volt/ember — de svarar på "hur
+     är formen?", det här på "var den här veckan över eller under min
+     vanliga?".
+
+     Mörka toner, inte de ljusa --green/--red som legat oanvända i
+     paletten: #3CCB7F mot vitt kort ger 1,8:1 och faller under WCAG:s
+     3:1 för grafik som bär betydelse. De här ligger på 5,1 respektive
+     5,6:1. Röd lutar mot karmin och inte mot ember-orangen ovanför, så
+     de två varma signalerna inte läses som samma sak.
+
+     Färgen är aldrig ensam bärare: stapeln står också över eller under
+     den streckade snittlinjen, vilket är samma information i position —
+     det som gör kortet läsbart även vid rödgrönblindhet. */
+  --above: #0F7D55;
+  --above-soft: rgba(15, 125, 85, 0.20);
+  --below: #C62348;
+  --below-soft: rgba(198, 35, 72, 0.16);
+  --grid: rgba(10, 22, 34, 0.07);
+
+  /* Text och siffror i grotesk, etiketter och enheter i monospace så
+     siffror linjerar. Båda är självhostade — se @font-face nedan. */
+  --mono: 'IBM Plex Mono', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --blue: #2B21F5;
+  --red: #FF5C7A;
+  --green: #3CCB7F;
+  --yellow: #FFC44D;
+  --shadow: rgba(10, 22, 34, 0.07);
+  /* Var 24px/16px. Den nya riktningen är avskalad, och kraftigt rundade
+     hörn med 2px svart ram drog åt motsatt håll. */
+  --radius: 6px;
+  --radius-sm: 4px;
+  /* Hörnen: --radius på allt som är ett eget kort (formbandet, mätarna,
+     analyserna, knapparna), --radius-sm på det som sitter INUTI ett kort
+     (avläsningarna, övningsväljaren). Korten stod på 4 och analyserna på
+     6 — två sorters kort bredvid varandra på samma sida. */
+
+  /* Luften innanför ett kort. Formbandets kort hade clamp(16px, 4vw,
+     26px) och analyskorten fasta 22px, så rubrikerna hoppade 6px i
+     sidled mellan korten på en telefon — och 4px åt andra hållet på en
+     dator. En token för båda. */
+  --card-pad: clamp(16px, 4vw, 24px);
+}
+
+/* Typsnitt i två roller, båda självhostade i /static/font.
+
+   Archivo bär gränssnittet, siffrorna och analysernas text, IBM Plex
+   Mono etiketter och enheter.
+
+   Newsreader låg här för analysernas prosa, men nådde aldrig skärmen:
+   *-regeln satte Archivo på varje element, så <p> och <li> inuti .prose
+   fick Archivo direkt i stället för att ärva antikvan. Sidan har alltså
+   alltid visat analyserna i Archivo, och det är det utseendet som står
+   kvar. Filerna finns i git-historiken.
+
+   SJÄLVHOSTADE, inte länkade från fonts.googleapis.com: appen körs på en
+   Pi i hemnätet och ska rendera likadant utan internet. Båda är släppta
+   under SIL Open Font License, så filerna får ligga i repot.
+
+   Archivo är VARIABELT — en enda fil täcker hela viktintervallet, därav
+   "font-weight: 100 900" i stället för en fil per vikt. IBM Plex Mono
+   levereras som statiska instanser och har därför en fil per vikt: 400
+   och 500. Någon 700 finns inte, så fetstil i mono-text sätts i 500
+   (se .band-note strong) — 700 hade webbläsaren fått hitta på själv.
+
+   unicode-range gör att webbläsaren bara hämtar det subset den behöver.
+   Svenska å, ä och ö ligger i latin (U+0000-00FF), liksom minustecknet
+   U+2212 som sidan använder i stället för bindestreck — latin-ext hämtas
+   därför i praktiken aldrig.
+
+   Ersatte Försvarsmakten Sans (regular.ttf/bold.ttf), som låg här
+   tidigare. De filerna finns kvar i git-historiken. */
+
+@font-face {
+  font-family: 'Archivo';
+  src: url('font/archivo-latin.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Archivo';
+  src: url('font/archivo-latin-ext.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('font/ibm-plex-mono-400-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('font/ibm-plex-mono-400-latin-ext.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('font/ibm-plex-mono-500-latin.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('font/ibm-plex-mono-500-latin-ext.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Typsnittet sätts på body och ÄRVS, inte på * som tidigare.
+
+   *-regeln gav varje element Archivo direkt, och en regel på elementet
+   självt vinner alltid över arv. Allt som satt inuti en mono-rad bytte
+   därför typsnitt: fetstilen i formbandets not ("under noll 3 dagar i
+   rad"), talen i baslinjernas avvikelser, legendernas etiketter och
+   grafernas axeltext stod i Archivo mitt i text som skulle vara mono. */
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Archivo', -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Formulärkontroller ärver inte typsnitt av sig själva — webbläsaren ger
+   dem sitt systemtypsnitt. *-regeln ovan dolde det. Klasserna längre ned
+   sätter storlek och vikt där de behövs. */
+button, input, select, textarea {
+  font: inherit;
+}
+
+body {
+  min-height: 100vh;
+}
+
+/* --- Kort ------------------------------------------------------------
+   Här låg .card, main.dash .card och .card h2. Ingen mall bar klassen
+   längre — dashboardens block flyttade till .band och passidans till
+   .band respektive .band analysis-card.
+
+   .card h2 var värst av de tre att lämna kvar: den har högre
+   specificitet (0,0,1,1) än .section-title (0,0,1,0) och satte en egen
+   font-size. Återinförde någon .card på ett block skulle rubriken inuti
+   tyst byta storlek, och felet hade synts i webbläsaren utan att stå
+   någonstans i den mall man tittade på. */
+
+/* Innehållet i analyskortet staplas med samma luft som dashboardens
+   analysrutor, i stället för att förlita sig på marginaler per element. */
+.analysis-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* Breda tabeller scrollar i sin egen behållare. Styrketabellens fem
+   kolumner ryms inte på en telefon, och utan det här hade hela sidan
+   fått scrolla i sidled. */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* --- Knappar ---------------------------------------------------------
+   Tre nivåer, efter vad handlingen kostar och hur ofta den behövs.
+
+   Primär, fylld: "Skicka" i chatten. Det man kommer till sidan för att
+   göra.
+
+   Sekundär, kontur: "Generera om" och "Generera analys". Samma form och
+   storlek, men de kostar ett Claude-anrop och behövs sällan — schemat
+   kör analyserna själv. Fyllda stod de som sidans tyngsta element under
+   varje analys, lika tunga som "Skicka".
+
+   Text: "‹ Dashboard" på passidan och "Synka nu" överst på dashboarden.
+   Tillbakalänken är navigering, inte en handling, och var en svart knapp
+   ovanför passnamnet. Synken behövs sällan — schemat synkar varje timme
+   — och var en svart knapp i full bredd längst ner på sidan.
+
+   Knapparna har riktig padding och blir 46px höga av sig själva, över de
+   44 som krävs för att träffa med en tumme. */
+.chat-send-btn,
+.linkbtn {
+  display: inline-block;
+  padding: 12px 20px;
+  background: var(--text);
+  color: #fff;
+  border: 1px solid var(--text);
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 600;
+  /* Explicit, annars blir knapparna olika höga: <a> ärver 1.5 från body
+     medan <button> använder webbläsarens egen (~1.1). Uppmätt innan:
+     "Generera om" 48px, "Skicka" 42px. */
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.linkbtn {
+  background: transparent;
+  color: var(--text);
+}
+
+/* Hovring bara där det finns en pekare. På en telefon "fastnar" :hover
+   efter ett tryck, och knappen stod kvar blå tills man tryckte någon
+   annanstans. */
+@media (hover: hover) {
+  .chat-send-btn:hover { opacity: 0.85; }
+
+  .linkbtn:hover { background: var(--grid); }
+
+  .backlink:hover,
+  .textbtn:hover { color: var(--text-dim); }
+}
+
+/* Tryckt läge: inverterad. */
+.chat-send-btn:active {
+  background: #fff;
+  color: var(--text);
+}
+
+.linkbtn:active {
+  background: var(--text);
+  color: #fff;
+}
+
+/* Upptagen: "Genererar…" väntar på servern och går inte att trycka på
+   igen. Hovringsfärgen stängs av, annars ser en låst knapp ut att svara. */
+.linkbtn:disabled,
+.linkbtn:disabled:hover {
+  background: transparent;
+  border-color: var(--text);
+  color: var(--text);
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Tillbakalänken. Mörk text med en pil, som en tillbakaknapp i
+   en app. Ytan är 44px hög fast texten är mindre, och ligger i hero:ns
+   flex-kolumn utan att sträckas ut till full bredd. Den negativa
+   marginalen drar pilen ut i kant med rubriken under — pilens egen
+   ritning har luft på vänstersidan. */
+.backlink,
+.textbtn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding-right: 12px;
+  margin-left: -6px;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+/* Textknappen är en <button>: webbläsarens ram och bakgrund bort. Ikonen
+   har mindre luft i sin ritning än tillbakapilen, därav annan marginal. */
+.textbtn {
+  gap: 6px;
+  margin-left: -2px;
+  padding-left: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.textbtn:disabled {
+  color: var(--text-muted);
+  cursor: progress;
+}
+
+/* Synkraden under hälsningen: knappen och beskedet bredvid. Beskedet
+   bryts till en egen rad när det inte ryms. */
+.sync-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 12px;
+}
+
+.sync-status {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.sync-status:empty { display: none; }
+.sync-status.is-error { color: var(--text); }
+
+/* Ikonen snurrar medan synken pågår — det enda tecknet på att något
+   händer de sekunder den tar, utöver att texten byts. */
+.textbtn.is-busy .sync-icon { animation: sync-spin 1s linear infinite; }
+
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .textbtn.is-busy .sync-icon { animation: none; }
+}
+
+/* --- Detail table --- */
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.detail-table th {
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-table td {
+  padding: 12px 6px;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Cellerna bryter inte rad. Styrketabellens fem kolumner klämdes ihop på
+   en telefon tills "130 kg" delades över två rader mitt i värdet. Blir
+   tabellen bredare än kortet scrollar den i sin .table-scroll i stället —
+   det är vad den behållaren finns för. */
+.detail-table th,
+.detail-table td {
+  white-space: nowrap;
+}
+
+/* Undantaget: övningsnamnet. Det är enda cellen med löptext (siffror och
+   enheter är korta och får aldrig brytas), och det är den som gjorde
+   styrketabellen 351px bred i en 297px-behållare på en telefon — "Volym"
+   hamnade utanför utan att något antydde att kolumnen fanns. Får namnet
+   brytas ryms alla fem kolumner. Ett långt namn kostar en extra rad i
+   stället för en dold kolumn, och räcker inte det ändå finns
+   .table-scroll kvar som fallskärm. */
+.detail-table td:first-child,
+.detail-table th:first-child {
+  white-space: normal;
+}
+
+/* Både th och td, inte bara td. Raderna är etikett/värde-par, så sista
+   raden behöll annars sitt streck under etikettkolumnen medan värdets
+   halva slutade — en linje som gick halvvägs och tog slut. Syntes knappt
+   mot den gamla bakgrunden, blev tydlig så fort tabellen fick vit yta. */
+.detail-table tr:last-child th,
+.detail-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* --- Chat ---
+   Ligger numera i .analysis-inner, som redan sätter 12px gap mellan sina
+   barn — ingen egen margin-bottom här, annars blir mellanrummet till
+   inputraden 28px i stället för 12px så fort tråden har meddelanden. */
+/* Ingen egen rullning: tråden växer med sidan. Den stod på max-height
+   420px med overflow, och en rullruta inuti en rullande sida fångar
+   tummen på en telefon — man rullade tråden när man ville rulla sidan,
+   och tvärtom. chat.js rullar fram det nya meddelandet i stället. */
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-thread:empty {
+  display: none;
+}
+
+.chat-bubble {
+  max-width: 82%;
+  padding: 14px 18px;
+  border-radius: 20px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--blue);
+  color: #fff;
+  border-bottom-right-radius: 6px;
+}
+
+.chat-bubble.bot {
+  align-self: flex-start;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 6px;
+}
+
+/* Claudes svar renderas som Markdown i bubblan (se static/chat.js), så
+   rubriker, listor och stycken behöver samma stramare marginaler som
+   analysrutorna (.ai-body) redan har — annars spretar bubblan. */
+.chat-bubble.bot p {
+  margin: 8px 0;
+}
+
+.chat-bubble.bot > :first-child {
+  margin-top: 0;
+}
+
+.chat-bubble.bot > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-bubble.bot ul, .chat-bubble.bot ol {
+  padding-left: 1.3em;
+  margin: 8px 0;
+}
+
+.chat-bubble.bot li {
+  margin: 4px 0;
+}
+
+.chat-bubble.bot h1, .chat-bubble.bot h2, .chat-bubble.bot h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 10px 0 6px;
+}
+
+.chat-bubble.bot strong {
+  font-weight: 700;
+}
+
+.chat-bubble.bot code {
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: var(--blue);
+}
+
+.chat-typing {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 0.88rem;
+}
+
+/* Fält och skicka-knapp bredvid varandra, inte knappen instoppad i
+   fältet. Rundningen på fältet är appens vanliga --radius (6px) — den
+   var tidigare --radius-pill (helt rund), det enda stället i hela appen
+   med den formen, och stack ut mot alla räta hörn runt omkring. */
+/* stretch, inte center: fältet och knappen står bredvid varandra och
+   räknade fram var sin höjd ur sitt eget typsnitt och radavstånd — 43px
+   mot 48px, tydligt ojämnt på en telefon. Med stretch sätter den högre
+   av de två radens höjd och den andra följer med. */
+.chat-input-bar {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: var(--radius);
+  /* Minst 16px. Under det zoomar Safari på iPhone in sidan när fältet
+     får fokus, och zoomar inte tillbaka när man skrivit klart — det
+     stod på 0.95rem (15,2px). */
+  font-size: 1rem;
+  color: var(--text);
+  outline: none;
+  padding: 12px 16px;
+}
+
+.chat-input::placeholder {
+  color: var(--text-dim);
+}
+
+/* ===========================================================
+   Dashboard (index.html)
+
+   Designen är byggd kring en fråga: vad ska jag göra med kroppen idag?
+   Baslinjerna överst sätter dagens siffror i din egen normala variation,
+   eftersom ett tal utan jämförelse inte betyder något, och analysen
+   under dem säger vad du ska göra. Formbandet efter visar GAPET mellan
+   kondition och trötthet — gapet är formen — alltså hur du kom hit.
+
+   Ersatte ett hero-fotografi på 100vh, tre cirklar utan inbördes
+   relation, och ett Chart.js-diagram med legend.
+   =========================================================== */
+
+main.dash {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4vw, 28px) 72px;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(28px, 5vw, 44px);
+}
+
+/* --- Hero --- */
+.dash-hero {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: clamp(24px, 6vw, 48px) clamp(16px, 4vw, 28px) clamp(20px, 4vw, 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Var 0.75rem/400 (webbläsarens standardvikt) — läsbart i teorin, men i
+   praktiken den text som oftast fick en andra titt: liten, tunn mono och
+   versaler samtidigt. IBM Plex Mono finns självhostad i 500 (se
+   @font-face ovan), så en tydligt tyngre vikt kostar ingen extra fil. */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.dash-greeting {
+  /* Skalar på riktigt med skärmbredden. Ett fast värde hade brutit till
+     tre rader på en telefon — samma fälla som den gamla hero-rubriken
+     gick i innan den fixades. */
+  font-size: clamp(2.4rem, 11vw, 4rem);
+  /* Archivo är variabelt, så 800 finns på riktigt och behöver inte
+     syntetiseras av webbläsaren. */
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  margin: 0;
+}
+
+/* .error-note: beskedet när "Generera" misslyckats. Samma form som
+   "Väntar på dagens synk" — något du behöver veta, inte en analys. */
+.stale-note,
+.error-note {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0;
+}
+
+/* Passnamnet kan vara betydligt längre än dashboardens hälsning
+   ("Morgonlöpning längs Lidingöbanan" mot "Hej Anna!"), så samma skala
+   hade svällt till tre rader på en telefon. */
+.detail-title {
+  font-size: clamp(1.9rem, 7vw, 2.9rem);
+}
+
+/* Klockslaget som sätts in under analysens rubrik (insertRunTime i
+   index.html). Mono av samma skäl som .stale-note: det är en siffra man
+   läser exakt, inte löptext. Dämpad — den svarar på en fråga man ställer
+   först när något ser konstigt ut, och ska inte konkurrera med rubriken.
+   Negativ toppmarginal drar upp den mot rubriken så de läses ihop. */
+.run-time {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin: -6px 0 14px;
+}
+
+/* --- Sektioner --- */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+/* En .eyebrow som är en hel mening, inte en kort etikett som "MOT DITT
+   30-DAGARSSNITT": chattens introrad och progressionens definition av
+   skattat maxlyft. Versaler och det breda bokstavsavståndet läser lika
+   illa som VERSALER I ETT SMS — definitionen blev fyra rader på en
+   telefon. */
+.eyebrow.sentence {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/* .chat-thread och .chat-input-bar ligger i .analysis-inner, som har
+   align-items:flex-start (så att .prose och .linkbtn inte sträcks ut till
+   kortets fulla bredd, se ovan) — utan stretch här skulle chattfönstret
+   och inputraden krympa till sitt innehålls bredd i stället för att fylla
+   kortet. */
+.chat-thread,
+.chat-input-bar {
+  align-self: stretch;
+}
+
+/* Diskret textlänk. "Generera om" ska finnas men inte konkurrera med
+   innehållet — de gamla knapparna i full bredd tog mer plats än
+   analyserna de genererade. */
+/* --- Formbandet --- */
+.band {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--card-pad);
+  box-shadow: 0 1px 2px var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.band-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch { width: 14px; height: 3px; flex: none; }
+.swatch.fitness { background: var(--volt); }
+.swatch.fatigue { background: var(--ember); }
+.swatch.gap {
+  height: 10px;
+  background: var(--fill);
+  border-top: 1px solid var(--ember);
+  border-bottom: 1px solid var(--volt);
+}
+
+/* Övningsväljaren i progressionskortet. Sätts i samma mono-stil som
+   .eyebrow, som annars står på den platsen i de andra banden — den ska
+   läsa som kortets underrubrik, inte som ett formulär mitt i en läsvy.
+
+   appearance:none tar bort operativsystemets egen pil och ram, men BARA
+   det: listan, tangentbordsnavigeringen och telefonens hjulväljare är
+   webbläsarens och rörs inte. Pilen ritas som en bakgrunds-SVG i stället,
+   så den följer färgen här och inte systemets.
+
+   Ingen text-transform: uppercase som .eyebrow har. Övningsnamnen är
+   data, inte etiketter, och "SKIVSTÅNGSRODD" läser sämre än
+   "skivstångsrodd".
+
+   16px och inte .eyebrow-storleken 0.82rem: Safari på iPhone zoomar in
+   sidan när en select under 16px får fokus, precis som chattfältet. */
+.picker {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background-color: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 30px 5px 10px;
+  /* Tumvänlig höjd. Den var 29px, under de 44 som krävs för att
+     träffa säkert på en telefon. */
+  min-height: 44px;
+  max-width: 100%;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%233E4B57' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px 6px;
+}
+
+@media (hover: hover) {
+  .picker:hover { border-color: var(--ink-faint); }
+}
+
+.picker:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* Tyngsta stången i progressionskurvan. Blek och inte en tredje
+   signalfärg: volt och ember bär redan var sin betydelse i korten
+   ovanför, och den här serien är en referens till maxlyftslinjen, inte
+   ett eget besked. */
+.swatch.faint { background: var(--ink-faint); }
+
+/* Rekordlinjen. Mörk och streckad. Den stod i ember som ett medvetet
+   undantag från palettregeln, men ett rekord är inte trötthet — och
+   ingen signalfärg får betyda två saker. Strecket säger "referens" och
+   inte "mätvärde", och mörkt mot den blå kurvan hittar ögat ändå. */
+.swatch.record {
+  background: repeating-linear-gradient(
+    90deg, var(--text) 0 4px, transparent 4px 7px
+  );
+}
+
+/* Datumet under ett rekord. Litet och dämpat: talet är beskedet, datumet
+   är vad man behöver för att veta om det är färskt. */
+.readout-when {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.chart-shell { width: 100%; }
+
+svg.band-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* 400 i brödtexten och 500 i fetstilen: IBM Plex Mono finns bara i de två
+   vikterna (se @font-face). Noten stod på 500 med fetstilen på 700, men
+   fetstilen renderades då i Archivo och syntes aldrig i mono — nu när den
+   ärver typsnittet hade 700 blivit en syntetisk fetstil. */
+.band-note {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin: 0;
+}
+
+.band-note strong { color: var(--ember-text); font-weight: 500; }
+
+/* Styrkenoten ärver .band-note men inte dess färg. Ember betyder
+   trötthetsskuld i formbandet ovanför, och "du har lyft 9 av 11
+   veckor" är ingen varning — det är samma sak staplarna visar, och de
+   är volt. En färg, en betydelse. */
+.strength-note strong { color: var(--volt); }
+.band-note strong.pos { color: var(--volt); }
+
+/* Progressionens not ("gått upp 4 kg", "personligt rekord i tyngsta
+   vikt") av samma skäl: framsteg, inte trötthet. Regeln stod tidigare
+   högre upp i filen, FÖRE .band-note strong — samma specificitet, så
+   den senare vann och noten blev orange. Den måste stå efter. */
+.progression-note strong { color: var(--volt); }
+
+.readout {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin: 0;
+}
+
+.readout div {
+  background: var(--card);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.readout dt {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.readout dd {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.readout dd.neg { color: var(--ember-text); }
+
+/* --- Baslinjer --- */
+.gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+/* Under 640px alltid två kolumner, och ett udda sista kort tar hela
+   raden. Passidans tre mätare (distans, längd, TSS) blev annars två plus
+   ett ensamt kort med en tom ruta bredvid, och vid 320px föll auto-fit
+   till en enda kolumn med fyra kort på höjden. */
+@media (max-width: 639px) {
+  .gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gauges > .gauge:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* Kroppens fyra mätare: två och två, eller alla fyra på en rad — aldrig
+   tre plus en, vilket auto-fit gav mellan 640 och 700px. */
+@media (min-width: 640px) {
+  .gauges.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.gauge {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+.gauge-label {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.gauge-value {
+  font-size: clamp(1.8rem, 6vw, 2.3rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+.gauge-unit {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0;
+}
+
+/* Trendlinjen visar formen på de senaste 30 dagarna, inte bara var dagens
+   värde ligger i spannet (det gör spåret nedanför). Egen y-skala per
+   mätvärde, inte samma som spåret — den ska visa formen på kurvan, inte
+   vara jämförbar i höjd med de andra korten. */
+.spark {
+  display: block;
+  width: 100%;
+  height: 34px;
+}
+
+/* Spåret visar var dagens värde ligger i 30-dagarsspannet: det tunna
+   strecket är ditt snitt, den tjocka markören är idag. */
+.track {
+  position: relative;
+  height: 4px;
+  background: var(--grid);
+  border-radius: 2px;
+}
+
+.track .mean {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--ink-faint);
+}
+
+.track .today {
+  position: absolute;
+  top: -3px;
+  height: 10px;
+  width: 3px;
+  border-radius: 1px;
+  background: var(--text);
+}
+
+/* Samma viktpar som .band-note: 400 och 500, de två mono-vikter som
+   finns. */
+.delta {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.delta b { font-weight: 500; }
+.delta.good b { color: var(--volt); }
+.delta.warn b { color: var(--ember-text); }
+.delta.flat b { color: var(--text-dim); }
+
+/* --- Analysernas text ---
+   Archivo, som resten av sidan. Här stod antikvan Newsreader, men den
+   nådde aldrig skärmen — se kommentaren vid @font-face. */
+.prose {
+  font-size: 1.02rem;
+  line-height: 1.62;
+  color: var(--text);
+  max-width: 62ch;
+}
+
+.prose > * + * { margin-top: 0.85em; }
+
+.prose h3, .prose h4, .prose h5, .prose h6 {
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+/* Analyserna skriver bara två nivåer: '# <datum>' som titel och '## <namn>'
+   som avsnitt. markdown.js trappar ned dem två steg, så de landar som h3
+   och h4 under kortets egen h2 ("Morgonanalys", "AI-analys").
+
+   h3 var 0,98rem — MINDRE än brödtexten på 1,02rem. En rubrik som är
+   mindre än texten den rubricerar flyter ihop med den, och "Nattens sömn"
+   läste som en fet mening mitt i stycket i stället för som ett avsnitt.
+   Nu samma 1,05rem som datumtiteln, alltså tydligt över brödtexten.
+
+   Att titel och avsnitt får samma storlek kostar lite här: titeln står
+   överst och en enda gång, avsnitten under den. Ordningen bär skillnaden.
+
+   h5 och h6 förekommer inte i någon analys, men står kvar som rimligt
+   fallback om en modell någon gång skriver fler nivåer. */
+.prose h3,
+.prose h4 { font-size: 1.05rem; }
+.prose h5,
+.prose h6 { font-size: 1rem; }
+
+.prose ul, .prose ol { padding-left: 1.2em; }
+.prose li + li { margin-top: 0.3em; }
+.prose strong { font-weight: 700; }
+
+.prose code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.empty-note {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* --- Senaste pass --- */
+.sessions {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+/* Hela raden är länken till passidan, inte bara namnet — större
+   träffområde på en telefon.
+
+   Datumkolumnen var 4.2rem (67px) för ett innehåll på 45px ("MÅN 21").
+   De 16px som blev över går nu till namnet och metadatan, som bröts på
+   tre-fyra rader vid 320px. Sista kolumnen är pilen som visar att raden
+   går att trycka på. */
+a.session {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr auto auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Kortets egen kant avslutar listan — ett streck till under sista raden
+   blev en dubbel linje mot kortets nederkant. */
+a.session:last-child { border-bottom: none; padding-bottom: 0; }
+
+@media (hover: hover) {
+  a.session:hover { background: rgba(43, 33, 245, 0.04); }
+}
+
+/* --text-muted och inte --ink-faint: pilen är det enda som säger att
+   raden går att trycka på, och grafik som bär betydelse behöver 3:1
+   (--ink-faint ger 2,6:1 mot vitt). */
+.session-chevron {
+  grid-row: 1 / span 2;
+  grid-column: 4;
+  display: flex;
+  color: var(--text-muted);
+}
+
+.session-date {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.session-name { font-weight: 700; letter-spacing: -0.01em; }
+
+.session-meta {
+  grid-column: 2;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* Ett värde bryts aldrig på mitten ("1 h 18 / min"). Raden bryts bara
+   efter en "·" — se meta i index.html. */
+.session-meta span { white-space: nowrap; }
+
+.session-load {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.load-bar {
+  display: block;
+  width: clamp(44px, 13vw, 100px);
+  height: 6px;
+  background: var(--grid);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.load-bar i { display: block; height: 100%; background: var(--ember); }
+
+.load-value {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.2ch;
+  text-align: right;
+}
+
+/* --- Uppritning av bandet, en gång vid inladdning --- */
+.draw {
+  stroke-dasharray: var(--len);
+  stroke-dashoffset: var(--len);
+  animation: band-draw 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.appear { opacity: 0; animation: band-appear 0.6s ease-out 0.8s forwards; }
+
+@keyframes band-draw { to { stroke-dashoffset: 0; } }
+@keyframes band-appear { to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .draw { animation: none; stroke-dashoffset: 0; }
+  .appear { animation: none; opacity: 1; }
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+@media (max-width: 420px) {
+  .readout { grid-template-columns: 1fr; }
+
+  /* En rad per värde: etiketten till vänster, siffran högerställd och
+     större. Staplade som på bredare skärmar (etikett över siffra) fyllde
+     varje rad bara till en fjärdedel — "8,6" längst till vänster i en
+     ruta som tog hela kortets bredd. Tre kolumner bredvid varandra
+     ryms inte: styrkekortets "1 354 kg" och progressionens "≈ 106,2 kg"
+     delar komponenten. */
+  .readout div {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+  }
+
+  /* nowrap: enheten ska stå kvar på siffrans rad ("≈ 134,2 kg" bröt
+     annars "kg" till en egen rad). Det är etiketten som får brytas. */
+  .readout dd {
+    font-size: 1.9rem;
+    line-height: 1.1;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .readout .readout-when { white-space: normal; }
+
+  /* Styrketabellens fem kolumner ryms med 2px marginal på en 375px-skärm
+     när övningsnamnet får brytas (se .detail-table th:first-child). De
+     två pixlarna kommer härifrån. */
+  .detail-table th,
+  .detail-table td {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  /* a.session behåller sin 3-kolumnslayout (datum | namn+metadata |
+     stapel) även här — uppmätt i webbläsaren mot skarp data (10 pass,
+     namn upp till "Lidingö Löpning") ryms den utan att svämma över, ner
+     till 320px. Ett tidigare försök flyttade stapeln till en egen rad
+     under texten i stället, på ett antagande om platsbrist som aldrig
+     verifierades och som visade sig vara fel — det sparade ingen bredd
+     men kostade en hel extra rad per pass. */
+}
+
+/* --- Hopfällbara analyser ---
+   Tre analyser à 2000-3500 tecken gjorde sidan 8600px hög, med
+   passlistan bakom 6000px prosa. <details> är webbläsarens egen
+   kontroll — tangentbord och skärmläsare fungerar utan eget bygge. */
+/* De tre analyserna som vita kort.
+
+   Blocken hade bara hårstreck upptill och nedtill och låg direkt på
+   sidans grå botten (--bg). Hopfällda är de inte mycket mer än en rubrik
+   mellan två streck, och de flöt ihop med bakgrunden i stället för att
+   läsa som tre saker man kan öppna. Den vita ytan är samma --card som
+   korten i aktivitets- och chattvyn, så det är ett grepp appen redan har
+   — inte ett nytt.
+
+   Ramen går hela vägen runt nu. Regeln som tog bort dubbla streck mellan
+   två block (.analysis-block + .analysis-block) är borta: den kunde ändå
+   aldrig träffa, eftersom varje block ligger i sin egen <section> och de
+   alltså inte är syskon. main.dash håller isär dem med sin egen gap. */
+.analysis-block {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+.analysis-block > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* Vågrätt utrymme tillkom med den vita ytan: texten låg tidigare i
+     kant med sidans marginal, vilket bara fungerar utan bakgrund. */
+  padding: 16px var(--card-pad);
+  cursor: pointer;
+  list-style: none;
+}
+
+/* Webkits egen triangel ersätts av .disclosure nedan. */
+.analysis-block > summary::-webkit-details-marker { display: none; }
+
+@media (hover: hover) {
+  .analysis-block > summary:hover .section-title { color: var(--text-dim); }
+}
+
+/* Ett plustecken som blir ett minus när blocket är öppet — ritat med
+   två streck, så det inte behöver något teckensnittsberoende glyf. */
+.disclosure {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.disclosure::before,
+.disclosure::after {
+  content: "";
+  position: absolute;
+  background: var(--text-dim);
+  transition: transform 0.18s ease;
+}
+
+.disclosure::before { top: 6px; left: 0; width: 14px; height: 2px; }
+.disclosure::after { left: 6px; top: 0; width: 2px; height: 14px; }
+
+.analysis-block[open] .disclosure::after { transform: scaleY(0); }
+
+.analysis-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  /* Samma vågräta utrymme som summary ovan, så rubrik och brödtext
+     linjerar mot kortets kant. */
+  padding: 0 var(--card-pad) var(--card-pad);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure::before, .disclosure::after { transition: none; }
+}
+
+/* Datumet i "Kroppen"-rubriken. Dämpat och i mono — det är en
+   precisering av vilken dag siffrorna gäller, inte en del av namnet. */
+.title-date {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* --- Klickbara staplar i styrkevolymen ------------------------------
+
+   Varje del av en stapel är ett pass och länkar till sin passida. Ytan
+   som tar emot klicket är en osynlig rect över hela veckans bredd (fill:
+   none tar inte emot pekarhändelser i SVG, därav pointer-events).
+   Markeringen är en egen rect med stapelns bredd, så det som lyser upp
+   är passet och inte hela kolumnen. Progressionens punkter använder
+   samma .bar-hit utan markering. */
+.bar-hit {
+  fill: none;
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.bar-hl {
+  fill: none;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .bar-link:hover .bar-hl { fill: rgba(10, 22, 34, 0.10); }
+}
+
+.bar-link:focus-visible .bar-hl {
+  fill: rgba(10, 22, 34, 0.10);
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.bar-link:focus-visible {
+  outline: none;
+}

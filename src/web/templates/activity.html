@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% block title %}{{ activity.name or 'Pass' }} · Träningsanalys{% endblock %}
+
+{# Aktivitetssidan låg kvar i den gamla formen medan dashboarden bytt
+   riktning: 480px bred mot dashboardens 720, .topbar med avatar i stället
+   för hero, svart gradientblock kring passnamnet, siffror i kort med
+   färgprickar, och en svart fullbreddsknapp. Två sidor i samma app såg ut
+   som två appar.
+
+   Den använder nu samma byggstenar som dashboarden — .dash-hero,
+   main.dash, .section-title, .gauge och .prose — så inget nytt formspråk
+   uppfinns här. #}
+
+{% block header %}
+<header class="dash-hero">
+  {# En länk och inte en knapp: den var en svart knapp ovanför passnamnet
+     och sidans tyngsta element. Pilen är Lucides chevron-left (ISC). #}
+  <a class="backlink" href="/">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+         stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+    Dashboard
+  </a>
+  {# "Lördag 19 september · 07:00 · Styrketräning". Stod som
+     "2026-09-19 07:00 · WEIGHTTRAINING" — maskinens datum och Intervals
+     egen typsträng. Typen utelämnas när den bara upprepar passnamnet. #}
+  {% set typnamn = (activity.type or activity.sport) | sporttyp %}
+  <p class="eyebrow">{{ activity.start_time | fmtdate }}{% if typnamn | lower != (activity.name or '') | lower %} · {{ typnamn }}{% endif %}</p>
+  {# Sidans enda h1, precis som dashboardens hälsning. Bedömningen som
+     tidigare stod här ("Stabil form, måttlig belastning") var hårdkodad i
+     templaten och därmed identisk på varje pass, oavsett data. #}
+  <h1 class="dash-greeting detail-title">{{ activity.name or activity.type or 'Pass' }}</h1>
+</header>
+{% endblock %}
+
+{% block content %}
+
+{# Ett mätvärde med enheterna i liten stil, som dashboardens mätare
+   ("58 ms"): "1 h 18 min" blir talen i full storlek och "h" och "min"
+   små. Ord som börjar med en siffra är tal, resten enheter. Tusental
+   hålls ihop av hårda mellanslag (se _fmt_number) och delas alltså inte
+   här. #}
+{% macro med_enhet(text) -%}
+  {%- for del in text.split(' ') -%}
+    {%- if del[:1].isdigit() -%}{{ del }}{%- else -%}<span class="gauge-unit">{{ del }}</span>{%- endif -%}
+    {%- if not loop.last %} {% endif -%}
+  {%- endfor -%}
+{%- endmacro %}
+
+{# --- Nyckeltal. Samma gauge-kort som "Kroppen" på dashboarden. Distans
+   hoppas över för pass som inte har någon (t.ex. styrketräning), i stället
+   för att visa ett kort med "-". --- #}
+<section class="section" aria-labelledby="key-title">
+  <h2 class="section-title" id="key-title">Nyckeltal</h2>
+  <div class="gauges">
+    {% if activity.distance_meters %}
+    <div class="gauge">
+      <p class="gauge-label">Distans</p>
+      <p class="gauge-value">{{ med_enhet(activity.distance_meters | distance) }}</p>
+    </div>
+    {% endif %}
+    {# Styrkepassets motsvarighet till distans — det finns inget att
+       "resa" i ett gympass, men väl en total volym att flytta. Döljs
+       helt när passet saknar set med både reps och vikt. #}
+    {% if strength_total_volume_kg is not none %}
+    <div class="gauge">
+      <p class="gauge-label">Total vikt</p>
+      <p class="gauge-value">{{ med_enhet((strength_total_volume_kg | tal(0)) ~ ' kg') }}</p>
+    </div>
+    {% endif %}
+    <div class="gauge">
+      <p class="gauge-label">Längd</p>
+      <p class="gauge-value">{{ med_enhet(activity.duration_seconds | duration) }}</p>
+    </div>
+    {% if activity.tss is not none %}
+    <div class="gauge">
+      <p class="gauge-label">TSS</p>
+      <p class="gauge-value">{{ activity.tss | round | int }}</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{# --- Detaljtabell. Raderna byggs i _activity_detail_rows (web/app.py)
+   och innehåller bara mått som faktiskt har ett värde för sporten —
+   tabellen visade tidigare alltid samma sex rader, så ett styrkepass fick
+   fyra stycken med bara "–". --- #}
+{% if detail_rows %}
+<section class="section" aria-labelledby="detail-title">
+  {# .band, inte .card med rubriken utanför: rubriken låg på sidans grå
+     botten medan innehållet satt i vitt. Dashboarden bär alla sina
+     rubriker inuti kortet, och de två sidorna ska inte svara olika på
+     samma fråga. #}
+  <div class="band">
+    <h2 class="section-title" id="detail-title">Passdetaljer</h2>
+    <div class="table-scroll">
+      <table class="detail-table">
+        {% for label, value in detail_rows %}
+        <tr><th>{{ label }}</th><td>{{ value }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{# --- Styrkeset (från klockans FIT-fil eller loggade via chatten) --- #}
+{% if strength_sets %}
+<section class="section" aria-labelledby="strength-title">
+  <div class="band">
+    <div class="band-head">
+      <h2 class="section-title" id="strength-title">Styrketräning</h2>
+      {# Källan avgörs av raderna själva (source='fit' | 'chat'). Här stod
+         tidigare fast "Loggat via chatten", vilket blev fel så fort setsen
+         började importeras automatiskt ur klockans FIT-fil. #}
+      <p class="eyebrow">{{ strength_source_label }}</p>
+    </div>
+    {# Fem kolumner ryms inte på en telefon. Tabellen scrollar i sin egen
+       behållare i stället för att tvinga hela sidan i sidled. #}
+    <div class="table-scroll">
+      <table class="detail-table">
+        <tr>
+          <th>Övning</th>
+          <th>Set</th>
+          <th>Reps</th>
+          <th>Vikt</th>
+          <th>Volym</th>
+        </tr>
+        {% for s in strength_sets %}
+        <tr>
+          {# Upprepa inte övningsnamnet på varje rad - bara när det byts. #}
+          <td>{% if loop.first or s.exercise != strength_sets[loop.index0 - 1].exercise %}{{ s.exercise }}{% endif %}</td>
+          <td>{{ s.set_number or '–' }}</td>
+          <td>{{ s.reps if s.reps is not none else '–' }}</td>
+          {# tal, inte råa floaten: vikterna lagras som REAL, så ett jämnt
+             set visades som "130.0 kg". tal fäller bort decimalen när den
+             är noll men behåller den när den betyder något — med
+             decimalkomma, "82,5 kg", som dashboarden. #}
+          <td>{{ s.weight_kg | tal ~ ' kg' if s.weight_kg is not none else '–' }}</td>
+          <td>{{ (s.reps * s.weight_kg) | tal(0) ~ ' kg' if s.reps is not none and s.weight_kg is not none else '–' }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{# --- AI-analys --- #}
+<section class="section" aria-labelledby="ai-title">
+  <div class="band analysis-card">
+    <h2 class="section-title" id="ai-title">AI-analys</h2>
+    {% if analysis %}
+      {# Klockslaget sätts av insertRunTime (static/run-time.js), direkt
+         efter analysens egen rubrik — samma ordning och samma format som
+         på dashboarden. Stod tidigare som en server-renderad rad FÖRE
+         rubriken, med fmtdate ("Kördes 2026-08-27 20:37") i stället för
+         dashboardens "Kördes 27 aug 20:37": två sidor som svarade olika
+         på samma fråga. #}
+      {# data-context-day = passets datum. Kördes analysen samma dag som
+         passet räcker klockslaget; genererar man om ett gammalt pass
+         idag skrivs datumet ut, för då säger rubriken en annan dag.
+
+         `or ''` är inte kosmetiskt: start_time sätts av _first_not_none i
+         _map_activity och blir None när inget av Intervals datumfält gick
+         att tolka. Passet sparas ändå, och `None[:10]` fällde då hela
+         sidan med en ohanterad TypeError (Jinja tolererar undefined, inte
+         None) — ett 500-fel på ett pass som i övrigt visas fint. Tom
+         sträng gör att runTimeLabel faller tillbaka på dagens datum, som
+         den redan gör för anropare utan känd kontextdag. #}
+      {# Markdownen läggs här som TEXT, inte som färdig HTML. Jinja escapar
+         den alltså, och renderAnalysisElement (static/markdown.js) parsar
+         och SANERAR den i webbläsaren — samma väg som dashboardens tre
+         analysrutor.
+
+         Stod tidigare som `{{ analysis.markdown | md }}`, ett serverfilter
+         som körde Python-Markdown och märkte resultatet som säker HTML.
+         Python-Markdown släpper igenom rå HTML, så allt det som
+         markdown.js byggdes för att stoppa gick rakt igenom här: ett
+         passnamn som "<img src=x onerror=...>" följer med i analysens
+         underlag, Claude ekar det i texten, och webbläsaren körde det.
+         Verifierat skarpt innan fixen. #}
+      <div class="prose"
+           data-created-at="{{ analysis.created_at }}"
+           data-context-day="{{ (activity.start_time or '')[:10] }}">{{ analysis.markdown }}</div>
+    {% else %}
+      <p class="empty-note">Ingen analys av detta pass än.</p>
+    {% endif %}
+    {# Diskret textlänk, som "Generera om" på dashboarden — inte den
+       svarta fullbreddsknappen sidan hade tidigare. #}
+    {# Formulär av samma skäl som på dashboarden: routen muterar och
+       kostar ett Claude-anrop, alltså inte GET. #}
+    {# Misslyckades "Generera analys" kommer man tillbaka hit med ?fel=analys
+       — se _analysis_failed i web/app.py. #}
+    {% if analysis_error %}
+    <p class="error-note" role="alert">Analysen kunde inte genereras. Försök igen om en stund – felet finns i tjänstens logg.</p>
+    {% endif %}
+    {# #ai-title: ankaret följer med genom omdirigeringen, så sidan öppnas
+       vid analysen och inte högst upp, där den inte syns. #}
+    <form class="generate-form" method="post" action="/analyze/activity/{{ activity.id | urlencode }}#ai-title">
+      <button class="linkbtn" type="submit">Generera analys</button>
+    </form>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('vendor/marked.min.js') }}"></script>
+<script src="{{ static_url('markdown.js') }}"></script>
+<script src="{{ static_url('run-time.js') }}"></script>
+<script src="{{ static_url('generate.js') }}"></script>
+<script>
+// Analysens markdown ligger som text i elementet (se kommentaren vid
+// .prose ovan). renderAnalysisElement parsar, SANERAR och trappar ned
+// rubrikerna — samma delade väg som dashboardens analysrutor.
+const analysisEl = document.querySelector('.analysis-card .prose');
+renderAnalysisElement(analysisEl);
+// Klockslaget sätts in efter renderingen, så det hamnar under analysens
+// egen rubrik och inte framför den markdown som ännu inte blivit HTML.
+if (analysisEl) insertRunTime(analysisEl, analysisEl.dataset.createdAt,
+                              analysisEl.dataset.contextDay);
+</script>
+{% endblock %}
