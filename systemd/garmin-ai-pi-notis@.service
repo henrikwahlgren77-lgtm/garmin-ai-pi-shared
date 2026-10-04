@@ -1,0 +1,42 @@
+[Unit]
+Description=Garmin AI Pi — notis om att %i fallerat
+
+# Startas av OnFailure= i garmin-ai-pi.service och
+# garmin-ai-pi-backup-upload.service, med den fallerade enhetens namn som
+# instans. Se scripts/skicka-notis.sh.
+
+# FÖRE `sudo cp`: byt <ditt-användarnamn> mot ditt eget Linux-
+# användarnamn (kör `whoami`) i User, WorkingDirectory, EnvironmentFile
+# och ExecStart nedan — annars startar tjänsten aldrig.
+[Service]
+Type=oneshot
+User=<ditt-användarnamn>
+WorkingDirectory=/home/<ditt-användarnamn>/garmin-ai-pi
+ExecStart=/home/<ditt-användarnamn>/garmin-ai-pi/scripts/skicka-notis.sh %i
+
+# --- Sandlåda ---------------------------------------------------------
+# Läser bara .env och skickar ett HTTP-anrop. Samma sandlåda som de andra.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/<ditt-användarnamn>/garmin-ai-pi
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

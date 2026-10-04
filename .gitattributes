@@ -1,0 +1,16 @@
+# Vendorade tredjepartsbibliotek ska ligga byte-identiska med uppströms,
+# så att de går att jämföra mot originalet på jsdelivr. Utan -text
+# konverterar Git radsluten (LF på Pi:n, CRLF på Windows) och filerna
+# skiljer sig då åt mellan maskinerna.
+src/web/static/vendor/*.js -text
+
+# Hålls UTANFÖR den publika versionen (git archive, se
+# tools/bygg-delad-version.sh). Skriptet är verktyget som tvättar bort
+# atletens namn och Linux-användarnamnet — och det gör det genom att
+# nämna dem, så att publicera det hade återinfört precis det som
+# tvättades bort. Skriptets egen slutkontroll upptäckte det och vägrade
+# bygga; raden nedan är den riktiga lösningen.
+#
+# Bara skriptet, inte hela tools/: las-beroenden.py hör till projektet och
+# behövs för att uppdatera requirements.lock även i den publika versionen.
+tools/bygg-delad-version.sh export-ignore

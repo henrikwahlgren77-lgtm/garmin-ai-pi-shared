@@ -1,0 +1,46 @@
+[Unit]
+Description=Garmin AI Pi — ladda upp databasbackup till molnet
+After=network-online.target
+Wants=network-online.target
+# Notis till telefonen när uppladdningen misslyckas eller nattens backup
+# är för gammal (skriptet avslutar då med 1 resp. 2).
+OnFailure=garmin-ai-pi-notis@%n.service
+
+# FÖRE `sudo cp`: byt <ditt-användarnamn> mot ditt eget Linux-
+# användarnamn (kör `whoami`) i User, WorkingDirectory, EnvironmentFile
+# och ExecStart nedan — annars startar tjänsten aldrig.
+[Service]
+Type=oneshot
+User=<ditt-användarnamn>
+WorkingDirectory=/home/<ditt-användarnamn>/garmin-ai-pi
+ExecStart=/home/<ditt-användarnamn>/garmin-ai-pi/scripts/ladda-upp-backup.sh
+
+# --- Sandlåda ---------------------------------------------------------
+# Uppladdningen behöver läsa backuperna och rclone-inloggningen, och
+# skriva till rclone.conf: rclone förnyar Jottacloud-token i filen vid
+# varje körning. Inget annat.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/<ditt-användarnamn>/garmin-ai-pi
+BindPaths=/home/<ditt-användarnamn>/.config/rclone
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

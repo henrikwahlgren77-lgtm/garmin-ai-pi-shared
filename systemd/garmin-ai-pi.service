@@ -1,0 +1,76 @@
+[Unit]
+Description=Garmin AI Pi — träningsanalys webbserver
+After=network-online.target
+Wants=network-online.target
+# Notis till telefonen när tjänsten ger upp (se scripts/skicka-notis.sh).
+#
+# "Ger upp" måste gå att nå. Med RestartSec=5 och systemds standardgräns
+# (fem starter på tio sekunder) startar en trasig tjänst om i all evighet
+# och blir aldrig "failed" — då fyrar OnFailure aldrig. Fem starter på
+# fem minuter: en enstaka krasch startas om tyst, en krasch vid varje
+# start stannar efter en halv minut och larmar. Manuella omstarter räknas
+# också, så fem `systemctl restart` inom fem minuter ger samma stopp —
+# `sudo systemctl reset-failed garmin-ai-pi` släpper det.
+OnFailure=garmin-ai-pi-notis@%n.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# FÖRE `sudo cp`: byt <ditt-användarnamn> mot ditt eget Linux-
+# användarnamn (kör `whoami`) i User, WorkingDirectory, EnvironmentFile
+# och ExecStart nedan — annars startar tjänsten aldrig.
+[Service]
+Type=simple
+User=<ditt-användarnamn>
+WorkingDirectory=/home/<ditt-användarnamn>/garmin-ai-pi
+EnvironmentFile=/home/<ditt-användarnamn>/garmin-ai-pi/.env
+ExecStart=/home/<ditt-användarnamn>/garmin-ai-pi/.venv/bin/python -m src.main serve
+Restart=on-failure
+RestartSec=5
+
+# --- Sandlåda ---------------------------------------------------------
+# Pi:n kör flera andra webbtjänster. Blir appen någonsin utnyttjad ska
+# den inte nå något mer än sin egen katalog: inte ssh-nycklarna, inte
+# rclone-inloggningen till molnet, inte de andra projekten.
+#
+# Hemkatalogen ersätts av en tom yta, och bara projektet monteras in,
+# skrivskyddat. Den enda skrivbara platsen är data/ (databasen och de
+# nattliga backuperna). `systemd-analyze security garmin-ai-pi` visar
+# vad som återstår.
+ProtectHome=tmpfs
+BindReadOnlyPaths=/home/<ditt-användarnamn>/garmin-ai-pi
+BindPaths=/home/<ditt-användarnamn>/garmin-ai-pi/data
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateDevices=yes
+
+# Allt appen skapar (databas, WAL-filer, backuper) blir läsbart bara
+# för ägaren — utan detta ärvs 644 och hälsodatan kan läsas av varje
+# annan användare på Pi:n.
+UMask=0077
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Normalt ~100 MB. Taket hindrar en skenande process från att svälta
+# ut de andra tjänsterna; MemoryHigh bromsar innan MemoryMax dödar.
+MemoryHigh=384M
+MemoryMax=512M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
