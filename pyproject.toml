@@ -1,0 +1,70 @@
+[project]
+name = "garmin-ai-pi"
+version = "0.1.0"
+description = "AI-driven (Claude Sonnet 5) analys av Intervals.icu träningsdata på Raspberry Pi 5. Mobil-först webbapp."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+# Spannen säger vad koden tål. Vad som faktiskt installeras bestämmer
+# requirements.lock (se tools/las-beroenden.py): utan den hade
+# utvecklingsmaskinen och Pi:n glidit isär över majorgränser — pydantic
+# 2.13 mot 1.10, anthropic 1.0 mot 0.122, starlette 1.6 mot 0.50 — och
+# testerna kördes mot en annan uppsättning än tjänsten.
+#
+# Varje beroende har ändå ett ÖVRE tak vid nästa major, för installationer
+# som inte går via låsfilen.
+#
+# apscheduler<4 är det viktigaste: 4.0 är en omskrivning med ett annat
+# API, och schemaläggaren är det som kör varenda analys.
+dependencies = [
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.29,<1.0",
+    "jinja2>=3.1,<4",
+    # web/app.py gör `from pydantic import BaseModel` för svarsmodellerna.
+    # Stod inte här: det fungerade bara för att fastapi råkar dra in
+    # pydantic åt oss. Ett direkt importerat bibliotek ska deklareras
+    # direkt, annars kan det försvinna utan att något i vår egen fil
+    # ändrats. Koden använder inget som skiljer 1.x från 2.x, så spannet
+    # rymmer båda; låsfilen väljer 2.x.
+    "pydantic>=1.10,<3",
+    "httpx>=0.27,<1.0",
+    "anthropic>=0.40,<2",
+    "python-dotenv>=1.0,<2",
+    "apscheduler>=3.10,<4",
+    # markdown (Python-Markdown) låg här för web/app.py:s `md`-filter, som
+    # renderade analyser server-side på aktivitetssidan. Filtret var en
+    # XSS-lucka (Python-Markdown släpper igenom rå HTML) och är borta —
+    # båda sidorna renderar numera markdown i webbläsaren via den
+    # sanerande static/markdown.js. Inget i koden importerar biblioteket.
+    #
+    # itsdangerous låg här av samma sort av skäl: FastAPI behöver den för
+    # SessionMiddleware, som appen aldrig använt. Ingen fil importerar
+    # den.
+    #
+    # Officiell Garmin-SDK, ren Python. Används för att läsa styrkepassens
+    # set-data (vikt/reps) ur originalfilen — se dump-fit i main.py.
+    "garmin-fit-sdk>=21.171,<22",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

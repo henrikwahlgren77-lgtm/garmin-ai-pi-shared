@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="Träningsanalys">
+  <!-- Grundfärgen är volt-tokenen ur style.css: "form och kontroll",
+       vilket är vad en träningssko betyder här. Inte ember, som bär
+       betydelsen belastning och trötthet. Paletten slår fast att de två
+       signalerna är semantiska och aldrig dekoration, och en ikon som
+       blandar dem för att det blir snyggare bryter mot den regeln.
+
+       Hex-värdet står skrivet, inte hämtat: en ikonfil rastreras till PNG
+       och kan inte läsa en CSS-variabel. Samma undantag som taggen
+       theme-color i base.html, och ett test i test_web_analyses_api.py
+       håller de två i takt.
+
+       (Tokennamnen skrivs utan sina inledande bindestreck med flit: två
+       bindestreck i rad avslutar en XML-kommentar, och filen blev
+       ogiltig XML när de stod där. Webbläsaren ritade då ingenting.) -->
+  <rect width="64" height="64" rx="14" fill="#2B21F5"/>
+  <!-- Lucide sport-shoe (ISC), 24-enhetsrutan skalad till 40 av 64: 62 %
+       av ytan, vilket lämnar luft nog att tåla telefonernas egna masker.
+
+       Strecket är 2,6 i stället för Lucides 2. Glyfen sitter indragen, och
+       originalvikten blir hårfin när hela brickan är 32 pixlar bred. -->
+  <g transform="translate(12 12) scale(1.6667)" fill="none" stroke="#FFFFFF"
+     stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m15 10.42 4.8-5.07"/>
+    <path d="M19 18h3"/>
+    <path d="M9.5 22 21.414 9.415A2 2 0 0 0 21.2 6.4l-5.61-4.208A1 1 0 0 0 14 3v2a2 2 0 0 1-1.394 1.906L8.677 8.053A1 1 0 0 0 8 9c-.155 6.393-2.082 9-4 9a2 2 0 0 0 0 4h14"/>
+  </g>
+</svg>

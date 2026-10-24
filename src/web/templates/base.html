@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  {# Måste följa --bg i style.css. En meta-tagg kan inte läsa en
+     CSS-variabel, så det här är det enda stället i markupen med ett
+     hex-värde — stod kvar som den gamla varmvita bakgrunden efter att
+     paletten bytts, vilket färgade mobilens adressfält i fel ton. #}
+  <meta name="theme-color" content="#E8EDF2">
+  <meta name="description" content="{% block description %}Träningsanalys från Intervals.icu{% endblock %}">
+  <title>{% block title %}Träningsanalys{% endblock %}</title>
+  {# Ikonerna. favicon.svg och favicon.ico bär en FÖRENKLAD sko — se
+     kommentaren i favicon.svg för varför den skiljer sig från icon.svg,
+     som hemskärmen och manifestet använder.
+
+     Länkas via static_url som allt annat: utan innehållsstämpeln sitter
+     en gammal ikon kvar i fliken långt efter att den bytts ut. #}
+  <link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="32x32">
+  <link rel="icon" type="image/svg+xml" href="{{ static_url('favicon.svg') }}">
+  <link rel="apple-touch-icon" href="{{ static_url('apple-touch-icon.png') }}">
+  <link rel="manifest" href="{{ static_url('site.webmanifest') }}">
+  <link rel="stylesheet" href="{{ static_url('style.css') }}">
+  {# Bibliotek laddas av de sidor som faktiskt använder dem, inte här.
+     Chart.js låg tidigare ovillkorligt i den här taggen och hämtades
+     därför även av sidor utan diagram; det biblioteket finns inte kvar
+     alls längre — diagrammen ritas som inline-SVG. #}
+  {% block head_scripts %}{% endblock %}
+</head>
+<body>
+  {# Tomt som standard: varje sida fyller det med sin egen <header
+     class="dash-hero">. Blocket ligger utanför <main> eftersom hero:n har
+     egen bredd och luft.
+
+     Här låg tidigare en gemensam .topbar med rubrik, undertitel och
+     avatar, plus en fast menyrad i botten med fyra flikar. Båda hade till
+     slut bara chattsidan kvar som användare — dashboarden och
+     aktivitetssidan gav sig egna hero-headers och tömde nav-blocket — och
+     när chattsidan togs bort fanns ingen kvar att visa dem för.
+
+     Menyraden var dessutom mest en omväg: tre av dess fyra flikar pekade
+     tillbaka till dashboarden. Sidorna länkar hem med en tillbakalänk i
+     sin egen header i stället. #}
+  {% block header %}{% endblock %}
+  <main class="{% block main_class %}dash{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="Träningsanalys">
+  <!-- Fliksyskonet till icon.svg, med skon FÖRENKLAD: bara sulan och
+       ovandelen, utan Lucides två detaljstreck (snörningen och
+       marklinjen).
+
+       Varför två filer och inte en: vid 32 pixlar slammar detaljstrecken
+       ihop med skon, och marklinjen blir en lös prick bredvid den som
+       läses som ett fel i bilden snarare än som en del av märket. Det
+       syntes först när PNG:n avkodades pixel för pixel — i en skärmdump
+       döljer omskalningen det.
+
+       Glyfen är också större här, 65 % av brickan mot 60 % i icon.svg.
+       En favicon ska fylla sin ruta; en hemskärmsikon ska tåla att
+       telefonens mask beskär den. -->
+  <rect width="64" height="64" rx="14" fill="#2B21F5"/>
+  <g transform="translate(9.8 9.8) scale(1.85)" fill="none" stroke="#FFFFFF"
+     stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.5 22 21.414 9.415A2 2 0 0 0 21.2 6.4l-5.61-4.208A1 1 0 0 0 14 3v2a2 2 0 0 1-1.394 1.906L8.677 8.053A1 1 0 0 0 8 9c-.155 6.393-2.082 9-4 9a2 2 0 0 0 0 4h14"/>
+  </g>
+</svg>

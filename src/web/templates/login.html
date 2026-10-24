@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Logga in · Träningsanalys{% endblock %}
+
+{# Visas i stället för ett rått 401-svar när en sida öppnas utan giltigt
+   token — en ny enhet, en rensad webbläsare eller en kaka som gått ut.
+   Tokenet självt skrivs aldrig ut här; sidan säger bara var det finns. #}
+{% block header %}
+<header class="dash-hero">
+  <p class="eyebrow">Träningsanalys</p>
+  <h1 class="dash-greeting">Logga in</h1>
+</header>
+{% endblock %}
+
+{% block content %}
+<section class="section login">
+  {% if wrong_token %}
+  <p class="error-note" role="alert">Tokenet i adressen stämmer inte.</p>
+  {% endif %}
+  <p>Den här enheten är inte inloggad. Öppna adressen en gång med ditt token
+     sist, så kommer enheten ihåg dig i ett år:</p>
+  <p class="login-address">{{ address }}?token=<em>ditt-token</em></p>
+  <p class="login-hint">Tokenet är <code>WEB_ACCESS_TOKEN</code> i
+     <code>.env</code> på Pi:n.</p>
+</section>
+{% endblock %}
